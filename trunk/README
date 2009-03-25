@@ -1,0 +1,50 @@
+﻿INSTRUCTIONS
+============
+
+For this to work you need perl. If you're running windows you can use ActivePerl, just download, install and you're ready. If you're using some other OS, you know where to get it.
+
+UNPACKING ARCHIVE
+=================
+
+If you want to mess with all kinds of files insude the game, you'll need to extract them from archive first. Script yum-unpack.pl does this. The archive is named YUMFILE_1.BIN. To unpack it do:
+
+$ perl yum-unpack.pl YUMFILE_1.BIN
+
+This will create directory YUMFILE_1 where all extracted files will be, and file YUMFILE_1.index, which will contain information about all extracted files.
+
+When you're done messing with game files, you must recreate YUMFILE_1.BIN by issuing this command:
+
+$ perl yum-unpack.pl YUMFILE_1
+
+REPLACING FILES IN ARCHIVE
+==========================
+
+Recreating archive takes very long time (and after that that you'll have to upload it to your psp!), so if you did just a small modification to one file, you can just insert it into existing archive INSIDE existing iso file (on your psp connected to your computer), you can do this:
+
+$ perl isoyum-inject.pl I:/ISO/imas-x.iso YUMFILE_1/script/1694.script
+
+If you get a message that it's not possible then you have to recreate whole archive.
+
+GAME SCRIPTS
+============
+
+Game scripts are stored in .script files. To get more or less human readable from of script, you have to do this:
+
+$ perl scripts-decode.pl d YUMFILE_1/script/1694.script YUMFILE_1/script/1694.src
+
+After that you can edit 1694.src to your heart's content (although beware that some changes will most definitely break the game! I'm going to change this in future). When you're done, issue this:
+
+$ perl scripts-decode.pl e YUMFILE_1/script/1694.src YUMFILE_1/script/1694.script
+
+It will create new script with changes you made that you can insert into game archives. After you encode the scripts, some clever transformations are applied to characters, so don't try to decode it again. This is necessary because game uses monospace font, and english characters look just ugly. To combat this, we are replacing all kanji in game font with double letters -- 亜 becomes "AA", for example. So, in encoded scripts, text you wrote looks like some very weird japanese scribblings, but in game it will be nice english letters.
+
+Because of this you need to import modified fonts into game archive to see english text in modified script files:
+
+$ perl isoyum-inject.pl I:/ISO/imas-x.iso fonts/32.pom
+$ perl isoyum-inject.pl I:/ISO/imas-x.iso fonts/33.pom
+$ perl isoyum-inject.pl I:/ISO/imas-x.iso fonts/34.pom
+$ perl isoyum-inject.pl I:/ISO/imas-x.iso fonts/35.pom
+$ perl isoyum-inject.pl I:/ISO/imas-x.iso fonts/36.pom
+
+This also breaks all non-translated text in game. Unfortunately, there's no better approach to this (unless you wantto disassemble and debug game).
+
