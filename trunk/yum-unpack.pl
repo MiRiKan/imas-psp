@@ -1,6 +1,3 @@
-# WRITTEN BY ANDREY OSENENKO
-# DO NOT STEAL MY ART
-
 use strict;
 use bytes;
 
@@ -218,6 +215,7 @@ if(-f $filename){
 			print $h $data;
 			$off+=$length;
 			print $h "\xff"x((smallpad $off)-$off);
+			$off+=0x2000 if $filename=~/script$/;
 			$off=smallpad $off;
 			
 			$fileno++;

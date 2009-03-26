@@ -30,11 +30,11 @@ GAME SCRIPTS
 
 Game scripts are stored in .script files. To get more or less human readable from of script, you have to do this:
 
-$ perl scripts-decode.pl d YUMFILE_1/script/1694.script YUMFILE_1/script/1694.src
+$ perl scripts-decode.pl YUMFILE_1/script/1694.script
 
-After that you can edit 1694.src to your heart's content (although beware that some changes will most definitely break the game! I'm going to change this in future). When you're done, issue this:
+After that you will get have 1694.src and 1694.txt -- edit them to your heart's content. When you're done, do this:
 
-$ perl scripts-decode.pl e YUMFILE_1/script/1694.src YUMFILE_1/script/1694.script
+$ perl scripts-encode.pl YUMFILE_1/script/1694.script
 
 It will create new script with changes you made that you can insert into game archives. After you encode the scripts, some clever transformations are applied to characters, so don't try to decode it again. This is necessary because game uses monospace font, and english characters look just ugly. To combat this, we are replacing all kanji in game font with double letters -- 亜 becomes "AA", for example. So, in encoded scripts, text you wrote looks like some very weird japanese scribblings, but in game it will be nice english letters.
 
@@ -46,5 +46,5 @@ $ perl isoyum-inject.pl I:/ISO/imas-x.iso fonts/34.pom
 $ perl isoyum-inject.pl I:/ISO/imas-x.iso fonts/35.pom
 $ perl isoyum-inject.pl I:/ISO/imas-x.iso fonts/36.pom
 
-This also breaks all non-translated text in game. Unfortunately, there's no better approach to this (unless you wantto disassemble and debug game).
+This also breaks all non-translated text in game. Unfortunately, there's no better approach to this (unless you want to disassemble and debug game).
 

@@ -1,8 +1,3 @@
-# WRITTEN BY ANDREY OSENENKO.
-# REDISTRIBUTION AND USE OF MY ART ARE PERMITTED PROVIDED THAT THE FOLLOWING CONDITIONS ARE MET:
-# YOU MUST ATTRIBUTE !!
-# DO NOT STEAL MY ART.
-
 use strict;
 use Encode;
 
@@ -13,45 +8,32 @@ BEGIN{($home)=$0=~/(.*)[\/\\].*/;$home||=".";}
 use lib $home;
 
 BEGIN{ require "utils.pl" }
+my $commands=our $script_commands;
+my @groups=our @script_groups;
 
-our $chars;
-our $char_reg;
-our $not_char_reg;
-
-my %charcodes=charcodetable;
 
 sub usage(){print <<HERE;exit;}
-Uasge: $0 d INFILE OUTFILE
-Uasge: $0 e INFILE OUTFILE
+Usage: $0 SCRIPT-FILE
 HERE
 
 sub readcom($){
 	my($h)=@_;
 	
-	read $h,my $byte,1 or return -1;
-	die sprintf "%02x",ord $byte unless $byte eq "\x80";
+	return -1 if eof $h;
 	
-	read $h,my $com,1 or die;
-	$com=unpack "C",$com;
+	my($escape,$command)=consume "CC",$h;
 	
-	my $res="";
-	my($b,$last);
-	while(read $h,$b,1){
-		if($last eq "\x80"){
-			my $no=unpack "C",$b;
-			if($no<0x80){
-				seek $h,-2,1;
-				
-				return ($com,$res);
-			}
-		}
+	die sprintf "%02x",$escape unless $escape==0x80;
+	
+	my $text="";
+	while(read $h,my $word,2){
+		my($l,$r)=unpack "CC",$word;
+		seek $h,-2,1 and last if $l==0x80 and $r<0x80;
 		
-		$res.=$last if defined $last;
-		$last=$b;
+		$text.=$word;
 	}
 	
-	$res.=$last if defined $last;
-	return ($com,$res);
+	return ($command,$text);
 }
 
 sub xunpack($$){
@@ -63,149 +45,124 @@ sub xunpack($$){
 	while($mask=~/(\w)(\W*)/g){
 		my($ch,$mod)=($1,$2);
 		
-		if($ch=~/a/){
-			my $line=decode "sjis",$res[$no];
-			
-			$line=~s/\\/\\\\/g;
-			$line=~s/\n/\\n/g;
-			$line=~s/"/\\"/g;
-			$line=~s/([\x00-\x1f])/"\\".(ord $1)/ge;
-			
-			$line=~s/^「//;
-			$line=~s/」$//;
-			
-			$res[$no]=qq{"$line"};
-		}
+		$res[$no]=decode "sjis",$res[$no]
+			if $res[$no] and $ch eq 'a';
 		
 		$no++;
 	}
-	
-	pop @res while $res[$#res] eq '""';
 	
 	@res
 }
 
-sub emit($@){
-	my($mask,@list)=@_;
+sub parse($){
+	my($filename)=@_;
 	
-#	print "[",(map "{$_}",@list),"|",
-#	pack $mask,@list;
-#	print "]\n";
+	my @tree;
 
-	my $res="";
+	open my $h,$filename or die "$filename - $!";
+	binmode $h;
 	
-	my $no=0;
-	while($mask=~/(\w)(\W*)/g){
-		my($ch,$mod)=($1,$2);
-		
-		if($ch=~/a/){
-			my $line=$list[$no];
-			$line=~s/^"(.*)"$/$1/;
-			my $resline="";
-			
-			while($line=~/($char_reg*)($not_char_reg*)/g){
-				my($ascii,$jis)=($1,$2);
-				
-				$ascii.=" " if (length $ascii)&0x01;
-				
-				$resline.=join "",map{$charcodes{$_} or die $_} $ascii=~/(..)/g;
-				$resline.=encode "sjis",$jis;
-			}
-			
-			$resline=~s/\\([123]?\d|.)/
-				my $res=$1;
-				
-				if($res eq 'n')				{$res="\n"}
-				elsif($res=~m!^[123]?\d$!)	{$res=chr $res}
-				
-				$res
-			/ge;
-
-			$list[$no]=$resline;
-			
-		}
-		
-		$no++;
-	}
-	
-	pack $mask,@list;
-}
-
-use constant COM =>{
-	"0f"	=> ["line1",				"a*"],
-	"01"	=> ["line2",				"a*"],
-	"10"	=> ["name",					"CCa*"],
-	"05"	=> ["unk05",				"a*"],
-	"04"	=> ["unk04",				"a*"],
-	"06"	=> ["unk06",				"a*"],
-	"02"	=> ["unk02",				"a*"],
-};
-
-my $com=COM;
-my $comnames = {map {
-	COM->{$_}->[0]=>$_
-} keys %$com};
-
-my $filename;
-
-my $mode=shift or usage;
-
-if($mode eq 'd'){
-	open my $in,(($filename=shift) or usage) or die "$filename - $!";
-	binmode $in;
-
-	open my $out,">",(($filename=shift) or usage) or die "$filename - $!";
-	binmode $out,":utf8";
-
-#	local $/;
-#	my $text=<$in>;
-
-#	while($text=~/\x80([\x00-\x7f].*?)(?=\x80[\x00-\x7f]|$)/g){
-	while(my($com,$text)=readcom $in){
+	while(my($com,$text)=readcom $h){
 		last if $com==-1;
 		
-		my $comid=sprintf "%02x",$com;
+		my $command_id=sprintf "%02x",$com;
 		
-#		printf "%s [$text]\n",$comid;
-		my $opts=(COM->{$comid} or [
-			"com$comid","C*"
-		]);
-
-		print $out $opts->[0]," ",(join " ",xunpack $opts->[1],$text),"\n";
+		my $info=$commands->{$command_id} || {name => "com$command_id"};
+		my $line=$info->{mode} eq 'line';
+		
+		my $mask=$info->{mask}.($line?"a*":"C*");
+		
+		my $hash={
+			name		=> $info->{name},
+			group		=> "$info->{group}",
+			code		=> $com,
+			comment		=> "$info->{comment}",
+			multiline	=> $info->{multiline}?1:0,
+			data		=> [xunpack $mask,$text],
+		};
+		
+		$hash->{line}=pop @{ $hash->{data} }
+			if $line;
+		
+		push @tree,$hash;
 	}
-} elsif($mode eq 'e'){
-	open my $in,(($filename=shift) or usage) or die "$filename - $!";
-	binmode $in,":utf8";
+	
+	close $h;
+	
+	\@tree
+}
 
-	open my $out,">",(($filename=shift) or usage) or die "$filename - $!";
-	binmode $out;
+my $filename=shift or usage;
 
-	while(defined($_=<$in>)){
-		s/\r?\n$//;
-		
-		next if /^#/;
-		
-		my($com,$args)=/([-\w\d]+)\s+(.*)/;
-		$com or next;
-		
-		my(@args)=(length $args>200)?
-			$args=~/(\d+|"[^"]*")(?: |$)/gs:
-			$args=~/(\d+|"(?:(?:\\\\)*\\"|[^"])*")(?: |$)/gs;
-		
-#		print "$com => ";
-		my($comno,$opts);
-		if($comnames->{$com}){
-			$comno=hex $comnames->{$com};
-			$opts=COM->{$comnames->{$com}};
-		} else{
-			$opts=[$com,"C*"];
-			$com=~s/^com// or die $com;
-			$comno=hex $com;
+die "File $filename must have .script extension"
+	unless $filename=~/(.*)\.script$/;
+
+my $basename=$1;
+
+my $tree=parse $filename;
+
+my %groups;
+my %groups_done;
+my @text;
+my @code;
+
+my $last;
+for(@{ $tree }){
+	my $code=$_->{code};
+	my $group=$_->{group};
+	
+	my $line=$_->{line};
+	$line=$last->{line}.$line if $last->{multiline};
+	
+	my $pushing_line=($line and not $_->{multiline} and not $group);
+	
+	die "Unexpected command $_->{name} after $last->{name}"
+		if $last->{multiline} and $code!=1;
+	
+	my(@codeline)=($_->{name},@{ $_->{data} });
+	
+	if($pushing_line){
+		if($_->{comment} and not $_->{multiline}){
+			$line=$_->{comment}.$line;
+		} elsif($last->{comment} and $last->{multiline}){
+			$line=$last->{comment}.$line;
 		}
 		
-#-		printf "%02x $opts->[1] [@args]\n",$comno;
-		print $out emit "CC".$opts->[1],0x80,$comno,@args;
+		push @codeline,"<shift>";
+		push @text,"$line";
+	} elsif($group){
+		$groups{$group}||=[];
+		
+		push @{ $groups{$group} },$line
+			unless $groups_done{group}->{$line};
+		
+		$groups_done{group}->{$line}||=
+			scalar @{ $groups{$group} };
+		
+		push @codeline,"<$group:$groups_done{group}->{$line}>";
+		
+		push @text,"# $line" if $group eq 'names';
 	}
-} else{
-	usage;
+	
+	push @code,join " ",@codeline;
+} continue{
+	$last=$_;
 }
+
+open my $out,">","$basename.txt" or die "$basename.txt - $!";
+binmode $out,":utf8";
+for(@groups){
+	next unless $groups{$_};
+	
+	my @list=@{ $groups{$_} };
+	print $out "!",(ucfirst $_),":\n",(map{"  $_\n"}@list),"\n";
+}
+print $out "$_\n" foreach @text;
+close $out;
+
+
+open my $out,">","$basename.src" or die "$basename.src - $!";
+print $out "$_\n" foreach @code;
+close $out;
+
+
