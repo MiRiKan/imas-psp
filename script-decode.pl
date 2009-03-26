@@ -77,6 +77,7 @@ sub parse($){
 			group		=> "$info->{group}",
 			code		=> $com,
 			comment		=> "$info->{comment}",
+			continuation=> "$info->{continuation}",
 			multiline	=> $info->{multiline}?1:0,
 			data		=> [xunpack $mask,$text],
 		};
@@ -107,25 +108,29 @@ my @text;
 my @code;
 
 my $last;
-for(@{ $tree }){
+for(0..@{ $tree }-1){
+	my $next=$tree->[$_+1];
+	$_=$tree->[$_];
+	
 	my $code=$_->{code};
 	my $group=$_->{group};
 	
 	my $line=$_->{line};
-	$line=$last->{line}.$line if $last->{multiline};
+#	$line=$last->{line}.$line if $last->{multiline};
+	$line.=$next->{line},$next->{line}="" if $_->{multiline} and $next->{continuation};
 	
-	my $pushing_line=($line and not $_->{multiline} and not $group);
+	my $pushing_line=($line and not $group); #not $_->{multiline} and 
 	
-	die "Unexpected command $_->{name} after $last->{name}"
-		if $last->{multiline} and $code!=1;
+#	die "Unexpected command $_->{name} after $last->{name}"
+#		if $last->{multiline} and $code!=1;
 	
 	my(@codeline)=($_->{name},@{ $_->{data} });
 	
 	if($pushing_line){
-		if($_->{comment} and not $_->{multiline}){
+		if($_->{comment}){ # and not $_->{multiline}
 			$line=$_->{comment}.$line;
-		} elsif($last->{comment} and $last->{multiline}){
-			$line=$last->{comment}.$line;
+#		} elsif($last->{comment} and $last->{multiline}){
+#			$line=$last->{comment}.$line;
 		}
 		
 		push @codeline,"<shift>";
