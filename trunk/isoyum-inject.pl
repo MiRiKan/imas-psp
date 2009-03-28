@@ -5,9 +5,9 @@ $|++;
 
 sub usage(){die <<HERE}
 Usage: $0 ISO-FILE FILENAME
-Replace a file inside yum archive inside iso image with file FILENAME.
+Replaces a file inside yum archive inside iso image with file FILENAME.
 This file must have been extracted from yum archive first (Don't just add
-files at random: extract, edit, and put back)
+files at random: extract, edit, and put back).
 HERE
 
 sub dirent($){

@@ -1,122 +1,65 @@
 use strict;
 use bytes;
+use Data::Dumper;
 
 my($home);
 BEGIN{($home)=$0=~/(.*)[\/\\].*/;$home||=".";}
 use lib $home;
 
 BEGIN{ require "utils.pl" }
-
-our $chars;
+BEGIN{ require "alphabet.pl" }
+our($single_chars,$single_chars_list,$single_chars_hash,$doubles_list,$doubles_hash,$doubles_codes,$doubles_table);
 
 $|++;
 
-sub usage(){die <<HERE}
+sub usage(){die sprintf <<HERE,length $single_chars}
 Usage:
 	$0 PNG-FILE
+Creates font for game from a .png file. Files 30.png - 38.png extracted from
+YUM archive and converted with pom-unpack.pl must present in current directory.
+Your picture must have height of 16 and have %d characters in it of width 8.
+Characters should be (disregard first and last square brackets): 
+[$single_chars]
 HERE
 
-use constant GLYPH_WIDTH =>		8;
-use constant GLYPH_HEIGHT =>	16;
+my $filename=shift or usage;
 
-my @charslist=split //,$chars;
-my @combinations=map{
-	my $l=$_;
-	map{ [$l,$_] } 0..$#charslist
-} 0..$#charslist;
+my $font=read_picture($filename,8,16);
 
-my $filename=shift;
+@{ $font->[0] } == @$single_chars_list or die "Need picture with ".(scalar @$single_chars_list)." characters, $filename has ".scalar @{ $font->[0] };
 
-die "File $filename doesn't exist"
-	unless -e "$filename";
+my $no=30;
+my $voff=0;
+my $data;
 
-`convert "$filename" "$filename.bmp"`;
--e "$filename.bmp" or die;
-
-open my $bmp,"<","$filename.bmp" or die "$! - $filename.bmp";
-binmode $bmp;
-
-my($start,$w,$h)=consume_bmp_header $bmp;
-
-die "Wrong width: must be ".GLYPH_WIDTH*@charslist.", is $w in your file" unless $w==GLYPH_WIDTH*@charslist;
-die "Wrong height: must be ".GLYPH_HEIGHT.", is $h in your file" unless $h==GLYPH_HEIGHT;
-
-my @glyph_data=map{
-	my $start=$start+GLYPH_WIDTH*$_*4;
-	[map{
-		seek $bmp,$start+$w*4*$_,0;
-		read $bmp,my $data,GLYPH_WIDTH*4;
-		
-		$data
-	} 0..GLYPH_HEIGHT-1]
-} 0..$#charslist;
-
-close $bmp;
-
-open $bmp,">","$filename-1.bmp" or die "$! - $filename-1.bmp";
-binmode $bmp;
-
-my $index;
-my $bmp;
-my($x,$y)=(32,32);
-my $picno=32;
-my $pos;
-
-while($index<@combinations || $index%1024!=1){
-	if($y==32){
-		if($bmp){
-			close $bmp;
-			`convert "$picno.bmp" "$picno.png"`;
-			$picno++;
-		}
-		
-		last if $index>=@combinations;
-		
-		open $bmp,">","$picno.bmp" or die "$! - $picno.bmp";
-		
-		print $bmp bmp_header(GLYPH_WIDTH*2*32,GLYPH_HEIGHT*32);
-		$pos=tell $bmp;
-		
-		$x=$y=0;
+sub flush(;$){
+	my($last)=@_;
+	if($data){
+		write_picture("$no-x.png",$data);
+		$no++;
 	}
+	$data=(eval{read_picture("$no.png",16,16)} or "");
 	
-	if(($index+(188-94))%188==0){
-		for(0..GLYPH_HEIGHT-1){
-			seek $bmp,$pos+GLYPH_WIDTH*2*$x*4+GLYPH_WIDTH*2*32*4*(GLYPH_HEIGHT*(31-$y)+$_),0;
-			
-			print $bmp $glyph_data[0]->[$_],$glyph_data[0]->[$_];
-		}
-		$x=0,$y++ if ++$x==32;
-	}
-	
-	my($l,$r)=@{ $combinations[$index<@combinations?$index:0] };
-	for(0..GLYPH_HEIGHT-1){
-		seek $bmp,$pos+GLYPH_WIDTH*2*$x*4+GLYPH_WIDTH*2*32*4*(GLYPH_HEIGHT*(31-$y)+$_),0;
-		
-		print $bmp $glyph_data[$l]->[$_],$glyph_data[$r]->[$_];
-	}
-	
-	$x=0,$y++ if ++$x==32;
-	$index++;
+	die unless $last or $data;
 }
 
-__DATA__
+flush;
 
-for my $x(0..$#charslist){
-for my $y(0..$#charslist){
-	my($l,$r)=@{ $combinations[$x+$y*@charslist] };
-	my $ny=$#charslist-$y;
-	
-	for(0..GLYPH_HEIGHT-1){
-		seek $bmp,$pos+GLYPH_WIDTH*2*$x*4+$w*2*4*(GLYPH_HEIGHT*$ny+$_),0;
+for my $row(@$doubles_table){
+	next unless $row;
+
+	for(0..@$row-1){
+		my $sym=$row->[$_];
+		next unless defined $sym;
 		
-		print $bmp $glyph_data[$l]->[$_],$glyph_data[$r]->[$_];
+		my($lc,$rc)=map{$single_chars_hash->{$_}} $sym=~/(.)(.)/;
+		
+		$data->[$voff]->[$_]=chunk_hor_join($font->[0]->[$lc],$font->[0]->[$rc]);
 	}
+
+} continue{
+	$voff++;
+	flush,$voff=0 if $voff==32;
 }
-}
 
-close $bmp;
-
-`convert "$filename-1.bmp" "$filename-1.png"`;
-
-
+flush 1;

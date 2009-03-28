@@ -1,12 +1,42 @@
 use strict;
 use bytes;
+use Getopt::Long;
 
 $|++;
 
+my($home);
+BEGIN{($home)=$0=~/(.*)[\/\\].*/;$home||=".";}
+use lib $home;
+
+BEGIN{ require "utils.pl" }
+
+my %padfiles=(
+	script		=> "0x2000",
+);
+my $nocom=0;
+
+GetOptions(
+	"pad=s"				=> \%padfiles,
+	"nocompress"		=> \$nocom,
+);
+
 sub usage(){die <<HERE}
-Usage:
-	$0 FILENAME
-	$0 DIRECTORY
+Usage: $0 FILENAME
+Usage: $0 DIRECTORY
+First form will unpack a YUM archive. If you have a file YUMFILE_1.BIN,
+this will create directory YUMFILE_1 with all files, and file YUMFILE_1.index
+with listing that is needed to recreate archive.
+Second form will create a YUM archive from a directory. File DIRECTORY.index
+must be present in the same directory for this to work.
+  -p TYPE=AMOUNT        will insert at least AMOUNT of padding after files
+                        of type TYPE when creating archive. This is useful if
+                        you plan to replace these files without remaking an
+                        archive in future. Default value is 0x2000 for files
+                        of type script, and 0 for others.
+  -n, --nocompress      do not compress files that were originally compressed.
+                        Might speed up archive creation process. Might break
+                        the game. Compression in .cso images is clearly
+                        superior. 
 HERE
 
 sub consume($$){
@@ -55,18 +85,18 @@ sub lzss($$){
 	$data=<$hh>;
 	close $hh;
 	
-	unlink qw/lzss-left-11111 lzss-right-11111/;
+	unlink qw/lzss-left-11111 lzss-right-11111 NUL/;
 	
 	$data
 }
 
 sub lzssd($){lzss(1,$_[0])}
 sub lzsse($){lzss(0,$_[0])}
-sub slurp($){local $/;open my $h,"$_[0]" or die "$! - $_[0]";binmode $h;my $data=<$h>;close $h;$data}
 
 my $h;
 my $exceptions=(open $h,"exceptions" and {
 	grep{$_} map{
+		s/#.*//;
 		/^([\w\d]+):\s+(.*)/ or next;
 		my($type,$nums)=($1,$2);
 		
@@ -122,12 +152,14 @@ if(-f $filename){
 		elsif	($data=~m!^CMSP!)				{$type="cmsp"} # Character model SP?
 		elsif	($data=~m!^ACT\0!)				{$type="act"} # Seems to go with cmsp files
 		elsif	($data=~m!^ANM\0!)				{$type="anm"}
+		elsif	($data=~m!^\0PBP!)				{$type="pbp"}
+		elsif	($data=~m!^STG\0!)				{$type="stg"}
 		elsif	($data=~m!^\x80[\x00-\x7f].*\x80\x01.*\x80[\x00\x20].*!sx)
 												{$type="script"}
 		elsif	($data=~m!^\x80.\x00!sx)
 												{$type="script-sup"}
-		elsif	($data=~m!^ ([\r\n\x20-\x7e\xa1-\xdf]|[\x81-\x9f\xe0-\xef][\x40-\x7e\x80-\xfc])+ $!sx)
-												{$type="txt"}
+		elsif	(valid_sjis $data)
+												{$type=$data=~/##000/?"mail.txt":"txt"}
 		else									{$type="unk"}
 		
 		$lasttype=$type;
@@ -173,8 +205,6 @@ if(-f $filename){
 		} elsif(/(\w*)\s+(.*)/){
 			my($mode,$file)=($1,$2);
 			
-#			die unless -e $file;
-			
 			push @files,[$file,$mode];
 			$packsize++;
 		} else{
@@ -202,6 +232,9 @@ if(-f $filename){
 			my $file=shift @files;
 			
 			my($filename,$flags)=@$file;
+			$flags=~s/C//g if $nocom;
+			
+			my($type,$shortname)=$filename=~m!.*/([\w\d]+)/(.*)$!;
 			
 			my $data=-e $filename?slurp $filename:"";
 			$data=lzsse $data if $flags=~/C/;
@@ -213,9 +246,8 @@ if(-f $filename){
 			
 			seek $h,$off,0;
 			print $h $data;
-			$off+=$length;
+			$off+=$length+(oct $padfiles{$type});
 			print $h "\xff"x((smallpad $off)-$off);
-			$off+=0x2000 if $filename=~/script$/;
 			$off=smallpad $off;
 			
 			$fileno++;
