@@ -1,11 +1,33 @@
 use strict;
 use Encode;
+use Carp qw/croak/;
 
 use utf8;
 
-our $chars=" !,-.0123456789:?ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-our $char_reg=qr/[$chars]/;
-our $not_char_reg=qr/[^$chars]/;
+use constant DATABASE_ADDRESS	=> 'localhost';
+use constant DATABASE_USERNAME	=> 'root';
+use constant DATABASE_PASSWORD	=> 'qwerty';
+use constant DATABASE_DATABASE	=> 'idolmaster';
+
+BEGIN{ require "alphabet.pl" }
+our($single_chars,$single_chars_list,$single_chars_hash,$doubles_list,$doubles_hash,$doubles_codes,$doubles_table);
+
+sub valid_sjis($){
+	my($text)=@_;
+	
+	my $pos=0;
+	my $length=length $text;
+	while($pos<$length){
+		my $first=substr $text,$pos++,1;
+		next if $first=~/[\r\n\x20-\x7e\xa1-\xdf]/;
+		return 0 unless $first=~/[\x81-\x9f\xe0-\xef]/;
+		
+		my $second=substr $text,$pos++,1;
+		return 0 unless $second=~/[\x40-\x7e\x80-\xfc]/;
+	}
+	
+	1
+}
 
 my $consume_cache;
 sub consume($$){
@@ -53,6 +75,91 @@ sub consume_bmp_header($){
 	$bmp_offset,$bmp_w,$bmp_h
 }
 
+sub read_picture($$$){
+	my($filename,$w,$h)=@_;
+	
+	die "File $filename doesn't exist"
+		unless -e "$filename";
+
+	`convert "$filename" "$filename.bmp"`;
+	-e "$filename.bmp" or die;
+
+	open my $bmp,"<","$filename.bmp" or die "$! - $filename.bmp";
+	binmode $bmp;
+	
+	my($start,$pw,$ph)=consume_bmp_header $bmp;
+	
+	die "Wrong width: $pw is not divisable by $w" unless $pw % $w==0;
+	die "Wrong height: $ph is not divisable by $h" unless $ph % $h==0;
+	
+	my $xc=$pw/$w;
+	my $yc=$ph/$h;
+	
+	my $pitch=$pw*4;
+	
+	my $glyph_data=
+	[map{
+		my $row=$_;
+		[map{
+			my $col=$_;
+			my $start=$start+$w*$col*4+$pitch*$h*$row;
+			[map{
+				seek $bmp,$start+$pitch*$_,0;
+				read $bmp,my $data,$w*4;
+			
+				$data
+			} 0..$h-1]
+		} 0..$xc-1]
+	}reverse (0..$yc-1)];
+
+	close $bmp;
+	
+	unlink "$filename.bmp";
+	
+	$glyph_data
+}
+
+sub write_picture($$){
+	my($filename,$data)=@_;
+	
+	open my $bmp,">","$filename.bmp" or die "$! - $filename.bmp";
+	binmode $bmp;
+	
+	my $xc=@{ $data->[0] };
+	my $yc=@$data;
+	my $h=@{ $data->[0]->[0] };
+	my $w=(length $data->[0]->[0]->[0])/4;
+	
+	my $pitch=$xc*$w*4;
+	
+	print $bmp bmp_header($w*$xc,$h*$yc);
+	my $start=tell $bmp;
+	
+	for my $y(reverse (0..$yc-1)){
+		for my $x(0..$xc-1){
+			my $pic=$data->[$yc-$y-1]->[$x];
+			my $start=$start+$w*$x*4+$pitch*$y*$h;
+			for(0..$h-1){
+				seek $bmp,$start+$pitch*$_,0;
+				print $bmp $pic->[$_];
+			}
+		}
+	}
+	
+	close $bmp;
+	
+	`convert "$filename.bmp" "$filename"`;
+	-e "$filename" or die;
+
+	unlink "$filename.bmp";
+}
+
+sub chunk_hor_join($$){
+	my($left,$right)=@_;
+	
+	[map{$left->[$_].$right->[$_]}0..scalar @$left-1]
+}
+
 sub sjis($$){
 	my($j1,$j2)=@_;
 	
@@ -64,54 +171,60 @@ sub sjis($$){
 	$s1,$s2
 }
 
-sub charcodetable(){
-	my @charslist=split //,$chars;
-	my @combinations=map{
-		my $l=$_;
-		map{ "$l$_" } @charslist
-	} @charslist;
-	
-	my $x=64;
-	my $y=22;
-	
-	my %table=map{
-		my $res=pack "CC",sjis($y+32,$x+32);
-		
-		$x=1,$y++ if ++$x==95;
-		
-		$_=>$res
-	} @combinations;
-	
-	%table
-}
-
-my $charcodes;
 my $replacements={
 	"'"	=> "´",
 	"("	=> "（",
 	")"	=> "）",
 };
+
 sub encode_doubletile($){
 	my($line)=@_;
 	
-	$charcodes||={charcodetable};
-	
+	my $pos=0;
 	my $res="";
+	my $return_point=0;
+	my $return_res="";
 	
-	while($line=~/($char_reg*)($not_char_reg*)/g){
-		my($ascii,$jis)=($1,$2);
+	while($pos<length $line){
+		my($ll,$l,$r,$rr)=map{substr $line,$pos+$_,1}-1,-0,1,2;
+		$r=' ' if $r eq '';
 		
-		$ascii.=" " if (length $ascii)&0x01;
+		my $seq="$l$r";
+		my $have_next=defined $doubles_hash->{"$r$rr"};
+		my $have_prev=defined $doubles_hash->{"$ll$l"};
 		
-		$res.=join "",map{$charcodes->{$_} or die "Unknown double-tile character: $_ (how did this happen!?)"} $ascii=~/(..)/g;
+		$return_point=-1
+			if $pos>1 and not ($have_next and $have_prev);
 		
-		$jis=join "",map{
-			ord $_>=0x80?
-				$_:
-				($replacements->{$_} or die "Unexpected character: ``$_'' (".(ord $_).")")
-		} split //,$jis;
+		if($l eq ' '){
+			$return_point=$pos;
+			$return_res=$res;
+		} elsif($r eq ' '){
+			$return_point=$pos+1;
+			$return_res=$res.$l;
+		}
 		
-		$res.=encode "sjis",$jis;
+		if(defined $doubles_hash->{$seq}){
+			$res.=pack "n",$doubles_codes->{$seq};
+			$pos+=2;
+		} else{
+			if($rr and $ll and $have_next and $have_prev and $return_point!=-1){
+				$pos=($return_point+1)&0xfffffffe;
+				$res=$return_res;
+				substr $line,$pos,0,' ';
+				redo;
+			}
+			
+			$l=$replacements->{$l} if $replacements->{$l};
+			my $lj=encode "sjis",$l;
+			
+			die "Unexpected character: ``$l'' (".(ord $l).")" if 2!=length $lj;
+			
+			$res.=$lj;
+			
+			$pos++;
+			$return_point=-1;
+		}
 	}
 	
 	$res
@@ -123,8 +236,9 @@ our $script_commands={
 		mode	=> "line",
 	},
 	"01"	=> {
-		name	=> "line2",
-		mode	=> "line",
+		name			=> "line2",
+		mode			=> "line",
+		continuation	=> "1",
 	},
 	"02"	=> {
 		name	=> "unk02",
@@ -133,20 +247,20 @@ our $script_commands={
 	"04"	=> {
 		name		=> "choice1",
 		mode		=> "line",
-		multiline	=> 1,
 		comment		=> "Choice: ",
+		multiline	=> 1,
 	},
 	"05"	=> {
 		name		=> "choice2",
 		mode		=> "line",
-		multiline	=> 1,
 		comment		=> "Choice: ",
+		multiline	=> 1,
 	},
 	"06"	=> {
 		name		=> "choice3",
 		mode		=> "line",
-		multiline	=> 1,
 		comment		=> "Choice: ",
+		multiline	=> 1,
 	},
 	"0a"	=> {
 		name		=> "location",
@@ -169,6 +283,136 @@ our $script_commands={
 	},
 };
 our @script_groups=qw/names/;
+
+sub slurp($;$){local $/;open my $h,"$_[0]" or die "$! - $_[0]";$_[1]?binmode $h,$_[1]:binmode $h; my $data=<$h>;close $h;$data}
+
+sub list(@){
+	my @res;
+	
+	for my $mask(@_){
+		push @res,$mask and next unless $mask=~/[\*\?]/;
+		
+		my($dirpart,$namepart)=$mask=~m!^(?:(.+)/)?(.*)$!;
+		$dirpart||='.';
+		
+		my $regexp_text=$namepart;
+		$regexp_text=~s/\./\\./g;
+		$regexp_text=~s/\*/.*/g;
+		$regexp_text=~s/\?/./g;
+		
+		my $regexp=qr/^$regexp_text$/;
+		
+		push @res,$mask and next unless opendir my $dir,$dirpart;
+		
+		my @list=map "$dirpart/$_",grep{/$regexp/ and not /^\.\.?$/} readdir $dir;
+		
+		push @res,$mask and next unless @list;
+		
+		push @res,@list;
+	}
+
+	@res
+}
+
+
+sub eatline($;$){
+	my($h,$stop_on_whitespace)=@_;
+	local($_);
+	
+	while(0==length $_){
+		return undef if eof $h;
+		$_=<$h>;
+		chomp;
+		
+		return "" if $stop_on_whitespace and 0==length $_;
+		
+		return $1 if /^!(.*)/;
+		
+		s/#.*//;
+		s/^[^:]*: //;
+		s/\s+$//;
+	}
+	
+	$_
+}
+
+sub database(){
+	use DBI;
+
+	my $dbh=DBI->connect(
+		"DBI:mysql:database=".DATABASE_DATABASE.";host=".DATABASE_ADDRESS,
+		DATABASE_USERNAME,
+		DATABASE_PASSWORD,
+		{AutoCommit=>1,PrintError=>0,mysql_enable_utf8=>1},
+	) or die $DBI::errstr;
+
+	$dbh->do(<<HERE) or croak $dbh->errstr;
+create table if not exists text (
+	line int unsigned not null,
+	filename varchar(256) not null,
+	game  int unsigned not null,
+	text text not null,
+	type varchar(64) not null,
+
+	primary key (line,filename),
+	
+	index filename_index(filename),
+	index game_index(game),
+	index type_index(type)
+) engine=myisam;
+HERE
+
+	$dbh->do(<<HERE) or croak $dbh->errstr;
+create table if not exists blobs (
+	line int unsigned not null,
+	filename varchar(256) not null,
+	game int unsigned not null,
+	text blob not null,
+	type varchar(64) not null,
+
+	primary key (line,filename),
+	
+	index filename_index(filename),
+	index game_index(game),
+	index type_index(type)
+) engine=myisam;
+HERE
+
+	$dbh->do(<<HERE) or croak $dbh->errstr;
+create table if not exists files (
+	filename varchar(256) not null,
+	game int unsigned not null,
+	type varchar(64) not null,
+	encoding text not null,
+
+	primary key (filename)
+) engine=myisam;
+HERE
+	$dbh
+}
+
+my $db;
+sub query($;$@){
+	my($dbh)=(shift);
+	my($query);
+
+	if(not ref $dbh){
+		$query=$dbh;
+		$dbh=$db||=database;
+	} else{
+		$query=shift;
+	}
+	
+	my $sth=$dbh->prepare($query) or croak $dbh->errstr;
+	
+	$sth->execute(@_) or croak $dbh->errstr;
+	
+	my $ref=($sth->fetchall_arrayref() or []);
+
+	$sth->finish;
+	
+	$ref
+}
 
 
 1;

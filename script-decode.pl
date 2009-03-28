@@ -14,7 +14,66 @@ my @groups=our @script_groups;
 
 sub usage(){print <<HERE;exit;}
 Usage: $0 SCRIPT-FILE
+Decodes a script to human readable from. Will produce two files, .src with
+script logic and .txt with text.
 HERE
+
+my %translations=(
+	あずさ			=> "Azusa",
+	おじさん			=> "Old man",
+	やよい			=> "Yayoi",
+	アナウンス			=> "Announcement",
+	ゴシップ記者		=> "Reporter",
+	スタイリスト			=> "Stylist",
+	主人公			=> "Protagonist",
+	亜美				=> "Ami",
+	伊織				=> "Iori",
+	千早				=> "Chihaya",
+	名無しさん			=> "Anonymous",
+	周りのアイドル		=> "Idols",
+	審査員			=> "Judges",
+	小鳥				=> "Kotori",
+	律子				=> "Ritsuko",
+	敏腕記者			=> "Ace Reporter",
+	新社長			=> "New President",
+	春香				=> "Haruka",
+	"春香・響"		=> "Haruka's voice",
+	真				=> "Makoto",
+	"真・響"			=> "Makoto's voice",
+	真美				=> "Mami",
+	社長				=> "President",
+	美希				=> "Miki",
+	記者				=> "Reporter",
+	貴音				=> "Takane",
+	雪歩				=> "Yukiho",
+	響				=> "Echo",
+	黒井社長			=> "President Kuroi",
+	"？？？"			=> "???",
+	
+	番組スタッフ		=> "Staff",
+	スタッフ			=> "Staff",
+	"亜美・真美"		=> "Ami and Mami",
+	"▼美"			=> "??mi",
+	犬				=> "Dog",
+	警備員			=> "Guard",
+	管理人			=> "Manager",
+	ファン				=> "Fan",
+	
+	女				=> "Woman",
+	司会者			=> "Chairman",
+	ＡＤ				=> "Ad",
+	"千早・美希"		=> "Chihaya and Miki",
+	"律子・美希"		=> "Ritsuko and Miki",
+	女の子			=> "Girl",
+	友達Ａ			=> "Friend A",
+	友達Ｂ			=> "Friend B",
+	女の子Ａ			=> "Girl A",
+	女の子Ｂ			=> "Girl B",
+	編成部長			=> "Director",
+	編成部長の弟		=> "Director's brother",
+	電話の声			=> "Voice",
+
+);
 
 sub readcom($){
 	my($h)=@_;
@@ -116,37 +175,35 @@ for(0..@{ $tree }-1){
 	my $group=$_->{group};
 	
 	my $line=$_->{line};
-#	$line=$last->{line}.$line if $last->{multiline};
 	$line.=$next->{line},$next->{line}="" if $_->{multiline} and $next->{continuation};
 	
-	my $pushing_line=($line and not $group); #not $_->{multiline} and 
-	
-#	die "Unexpected command $_->{name} after $last->{name}"
-#		if $last->{multiline} and $code!=1;
+	my $pushing_line=($line and not $group);
 	
 	my(@codeline)=($_->{name},@{ $_->{data} });
 	
+	my $tlline=($translations{$line} or $line);
+	
 	if($pushing_line){
-		if($_->{comment}){ # and not $_->{multiline}
-			$line=$_->{comment}.$line;
-#		} elsif($last->{comment} and $last->{multiline}){
-#			$line=$last->{comment}.$line;
-		}
+		$line=$_->{comment}.$line if($_->{comment});
 		
-		push @codeline,"<shift>";
+		push @codeline,"<shift> # $tlline";
+		push @text,"# $line";
 		push @text,"$line";
 	} elsif($group){
 		$groups{$group}||=[];
 		
-		push @{ $groups{$group} },$line
+		push @{ $groups{$group} },$tlline
 			unless $groups_done{group}->{$line};
 		
 		$groups_done{group}->{$line}||=
 			scalar @{ $groups{$group} };
 		
-		push @codeline,"<$group:$groups_done{group}->{$line}>";
+		push @codeline,"<$group:$groups_done{group}->{$line}>  # $tlline";
 		
-		push @text,"# $line" if $group eq 'names';
+		if($group eq 'names'){
+			push @text,"";
+			push @text,"# [$tlline]";
+		}
 	}
 	
 	push @code,join " ",@codeline;
@@ -160,13 +217,14 @@ for(@groups){
 	next unless $groups{$_};
 	
 	my @list=@{ $groups{$_} };
-	print $out "!",(ucfirst $_),":\n",(map{"  $_\n"}@list),"\n";
+	print $out (ucfirst $_),"\n",(map{"  $_\n"}@list),"\n";
 }
 print $out "$_\n" foreach @text;
 close $out;
 
 
 open my $out,">","$basename.src" or die "$basename.src - $!";
+binmode $out,":utf8";
 print $out "$_\n" foreach @code;
 close $out;
 

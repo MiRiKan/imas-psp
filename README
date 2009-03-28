@@ -3,6 +3,20 @@
 
 For this to work you need perl. If you're running windows you can use ActivePerl, just download, install and you're ready. If you're using some other OS, you know where to get it.
 
+QUICK START GUIDE
+=================
+
+1. Extract .iso somewhere (umdgen program might be a good choice for this under windows. v4.00 seems to bne broken for me, but v3.00 works fine).
+2. Chdir to WHERE_YOU_EXTRACTED/PSP_GAME/USRDIR and do this: ``perl yum-unpack.pl YUMFILE_X.BIN'' (YUMFILE_1.BIN, YUMFILE_2.BIN, or YUMFILE_3.BIN dependig on which file is there).
+3. When archive is extracted, copy files from fonts directory into WHERE_YOU_EXTRACTED/PSP_GAME/USRDIR/YUMFILE_X/pom. (This adds english font to game).
+4. Convert script files from YUMFILE_X/script with ``script-decode.pl filename.script'', edit generated .txt files or replace them with edited versions from tlwiki.
+5. Convert them back into format game understands with ``script-encode.pl filename.script''.
+6. chdir to WHERE_YOU_EXTRACTED/PSP_GAME/USRDIR and execute ``yum-unpack.pl YUMFILE_X'' (notice there's no .BIN extension this time). This will create new modified YUMFILE_X.BIN archive.
+7. Remake .iso again, replacing original YUMFILE_X with the one you created (umdgen, umdgen).
+8. Upload .iso to your PSP and play the game.
+9. If you want to make more modifications, do this: ``perl isoyum-inject.pl ISO_FILE_ON_YOUR_PSP FILE_YOU_PREVIOSULY_EXTRACTED_AND_WANT_TO_INSERT_THERE''
+
+
 UNPACKING ARCHIVE
 =================
 
@@ -16,6 +30,7 @@ When you're done messing with game files, you must recreate YUMFILE_1.BIN by iss
 
 $ perl yum-unpack.pl YUMFILE_1
 
+
 REPLACING FILES IN ARCHIVE
 ==========================
 
@@ -25,26 +40,35 @@ $ perl isoyum-inject.pl I:/ISO/imas-x.iso YUMFILE_1/script/1694.script
 
 If you get a message that it's not possible then you have to recreate whole archive.
 
+
 GAME SCRIPTS
 ============
 
 Game scripts are stored in .script files. To get more or less human readable from of script, you have to do this:
 
-$ perl scripts-decode.pl YUMFILE_1/script/1694.script
+$ perl script-decode.pl YUMFILE_1/script/1694.script
 
 After that you will get have 1694.src and 1694.txt -- edit them to your heart's content. When you're done, do this:
 
-$ perl scripts-encode.pl YUMFILE_1/script/1694.script
+$ perl script-encode.pl YUMFILE_1/script/1694.script
 
-It will create new script with changes you made that you can insert into game archives. After you encode the scripts, some clever transformations are applied to characters, so don't try to decode it again. This is necessary because game uses monospace font, and english characters look just ugly. To combat this, we are replacing all kanji in game font with double letters -- 亜 becomes "AA", for example. So, in encoded scripts, text you wrote looks like some very weird japanese scribblings, but in game it will be nice english letters.
+It will create new script with changes you made that you can insert into game archives. After you encode the scripts, some clever transformations are applied to characters, so don't try to decode it again.
 
-Because of this you need to import modified fonts into game archive to see english text in modified script files:
 
-$ perl isoyum-inject.pl I:/ISO/imas-x.iso fonts/32.pom
-$ perl isoyum-inject.pl I:/ISO/imas-x.iso fonts/33.pom
-$ perl isoyum-inject.pl I:/ISO/imas-x.iso fonts/34.pom
-$ perl isoyum-inject.pl I:/ISO/imas-x.iso fonts/35.pom
-$ perl isoyum-inject.pl I:/ISO/imas-x.iso fonts/36.pom
+WORKING WITH PICTURES
+=====================
+Pictures are stored inside .pom files. Program that convers them, needs imagemagick installed: http://www.imagemagick.org/
+You can convert a pom file with this command:
 
-This also breaks all non-translated text in game. Unfortunately, there's no better approach to this (unless you want to disassemble and debug game).
+$ perl pom-unpack.pl 1694.pom
+
+This will create a 1694.png file, or, if 1694.pom had many pictues inside it, 1694-1.png .. 1694-N.png files. You can edit them in your favorite editor now (photoshop). When you're done, do this:
+
+$ perl pom-pack.pl 1694.pom
+
+or, if there was many PNG files and you edited some other than the first one:
+
+$ perl pom-pack.pl 1694.pom 1694-42.png
+
+Be advised that .pom files have palettes in them -- they have only a limited set of colors, and this particular program does not change the palette. What this really means, though, is that if original .pom only had red color, even if you change PNG to green, it will turn up as red in game. When editing PNGs, try to preserve colors.
 

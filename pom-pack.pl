@@ -11,18 +11,26 @@ $|++;
 
 sub usage(){die <<HERE}
 Usage:
-	$0 POM-FILE
+	$0 POM-FILE [PNG-FILE]
+Converts a PNG picture to .pom file. Because of specifics of .pom format, you
+can only convert pictures you previously converted from .pom files, and
+original .pom must present in the same place. If there were many pictures
+inside .pom file, you may specify which one to use to use by supplying
+addition argument (if you don't, first picture will be used). Be advised that
+.pom files have palettes in them -- they have only a limited set of colors,
+and this particular program does not change the palette. What this really
+means, though, is that if original .pom only had red color, even if you change
+PNG to green, it will turn up as red in game. When editing PNGs, try to
+preserve colors.
 HERE
 
 my $filename=shift or usage;
+my $pngname=shift;
 
 die "File must have .pom extension"
 	unless $filename=~/(.*)\.pom$/;
 
 my $resfile=$1;
-
-die "File $resfile.png doesn't exist"
-	unless -e "$resfile.png";
 
 open my $h,"+<",$filename or die "$! - $filename";
 binmode $h;
@@ -31,12 +39,17 @@ my($head,$height,$width,$unk1,$unk2,$unk3,$unk4,$aliases,$subs,$unk6,$ua,$ub,$uc
 
 die "Not a pom file - $filename"
 	unless $head eq "POM\0";
-	
+
 my $imagecount=$aliases+1;
 
 my @filenames=$imagecount==1?
 	"$resfile":
 	map{"$resfile-$_"}1..$imagecount;
+
+$pngname||="$filenames[0].png";
+
+die "File $pngname doesn't exist"
+	unless -e "$pngname";
 
 my $bpp=$ub&0x40?4:8;
 
@@ -47,9 +60,16 @@ my @palettes=map{
 	}1..2**$bpp]
 } 1..$imagecount;
 
-my @palette=@{ $palettes[0] };
+my $paletteno=-1;
+$pngname eq "$filenames[$_].png" and $paletteno=$_
+	foreach 0..$#filenames;
 
-`convert "$resfile.png" "$resfile.bmp"`;
+die "$pngname can't be used to build $filename"
+	if $paletteno==-1;
+
+my @palette=@{ $palettes[$paletteno] };
+
+`convert "$pngname" "$resfile.bmp"`;
 -e "$resfile.bmp" or die;
 
 open my $bmp,"$resfile.bmp" or die "$_ - $resfile.bmp";
@@ -70,17 +90,28 @@ sub find_closest_color($){
 	for(0..$#palette){
 		my $pc=$palette[$_];
 		my $diff=
+			abs($color->[3]-$pc->[3])*2;
+			
+		$diff+=
 			abs($color->[0]-$pc->[0])+
 			abs($color->[1]-$pc->[1])+
-			abs($color->[2]-$pc->[2])+
-			abs($color->[3]-$pc->[3])*2;
+			abs($color->[2]-$pc->[2])
+			unless $color->[3]==0 and $pc->[3]<0x08;
+		
+#		printf "%02x%02x%02x%02x <=> %02x%02x%02x%02x $diff",
+#			$color->[0],$color->[1],$color->[2],$color->[3],
+#			$pc->[0],$pc->[1],$pc->[2],$pc->[3] if $color->[3]==0;
 		
 		if($diff<$range){
 			$range=$diff;
 			$index=$_;
+#			print " *\n"if $color->[3]==0;
+		} else{
+#			print "\n"if $color->[3]==0;
 		}
 	}
 	
+#	print "====\n"if $color->[3]==0;
 	$index
 }
 
@@ -112,43 +143,3 @@ unlink "$resfile.bmp";
 
 
 exit;
-
-__DATA__
-
-my @color_data=$bpp==8?(map{
-	consume "C",$h;
-} 1..$width*$height):(map{
-	my($color)=consume "C",$h;
-	my($l,$r)=($color&0x0f,($color&0xf0)>>4);
-	
-	$l,$r
-} 1..$width*$height);
-
-for my $no(0..$#bmps){
-	my $index=0;
-	my $handle=$bmps[$no];
-	my @palette=@{ $palettes[$no] };
-	for my $hblock(0..$height/$subh-1){
-		for my $wblock(0..$wsubc-1){
-			for my $line(1..$subh){
-				seek $handle,0x8a+(($height-($hblock*$subh+$line))*$width+($wblock*$subw))*4,0;
-				
-#				printf "% 2d % 2d % 4d % 8d\n",$hblock,$wblock,$line,($height-($hblock*$subh+$line))*$width+($wblock*$subw);
-				
-				for my $p(0..$subw-1){
-					print $handle $palette[$color_data[$index++]];
-				}
-			}
-		}
-	}
-}
-
-close $_ foreach @bmps;
-close $h;
-
-for(@filenames){
-	`convert "$_.bmp" "$_.png"`;
-	unlink "$_.bmp" if -e "$_.png";
-}
-
-
