@@ -66,7 +66,7 @@ sub mix(;$$$){
 
 my %duprem=map{$_=>1;}(
 	(mix "",		"$lc '-",	""),
-	(mix "$uc",		"$lc",		""),
+	(mix "$uc",		"$lc ",		""),
 	(mix "I",		"'",		""),
 	(mix " -(\"",	"",			"$uc"),
 	(mix "-",		"$di ",		",."),
@@ -82,6 +82,7 @@ my @doubles=sort keys %duprem;
 my %doubles=map{$doubles[$_]=>$_;} 0..$#doubles;
 my %doubles_codes;
 my $doubles_table;
+my %table_locations;
 
 my @single_chars=sort keys %chars_used;
 my %single_chars=map{$single_chars[$_]=>$_} 0..$#single_chars;
@@ -99,6 +100,7 @@ for(0..$#list){
 	}
 	
 	my $jchar=pack "n",$list[$_];
+	$table_locations{$list[$_]}=$_;
 	my $uchar="";
 	eval{$uchar=decode "sjis",$jchar,Encode::FB_CROAK};
 	if($uchar eq "" and not $leave){
@@ -121,8 +123,8 @@ print_html "</table></body></html>";
 
 $Data::Dumper::Indent = 1;
 print_code(Data::Dumper->Dump(
-	[	$single_chars,	\@single_chars,		\%single_chars,			\@doubles,		\%doubles,		\%doubles_codes,	$doubles_table],
-	[qw(single_chars	single_chars_list	single_chars_hash		doubles_list	doubles_hash	doubles_codes		doubles_table)]
+	[	$single_chars,	\@single_chars,		\%single_chars,			\@doubles,		\%doubles,		\%doubles_codes,	$doubles_table,	\%table_locations],
+	[qw(single_chars	single_chars_list	single_chars_hash		doubles_list	doubles_hash	doubles_codes		doubles_table	table_locations)]
 ));
 
 print_count "Total of $count spare characters\n";
