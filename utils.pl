@@ -172,17 +172,111 @@ sub sjis($$){
 }
 
 my $replacements={
-	"'"	=> "´",
-	"("	=> "（",
-	")"	=> "）",
+	' '	=> '　',
+	'!'	=> '！',
+	'"'	=> '″',
+	'#'	=> '＃',
+	'$'	=> '＄',
+	'%'	=> '％',
+	'&'	=> '＆',
+	'\''=> '′',
+	'('	=> '（',
+	')'	=> '）',
+	'*'	=> '＊',
+	'+'	=> '＋',
+	','	=> '，',
+	'-'	=> '‐',
+	'.'	=> '．',
+	'/'	=> '／',
+	'0'	=> '０',
+	'1'	=> '１',
+	'2'	=> '２',
+	'3'	=> '３',
+	'4'	=> '４',
+	'5'	=> '５',
+	'6'	=> '６',
+	'7'	=> '７',
+	'8'	=> '８',
+	'9'	=> '９',
+	':'	=> '：',
+	';'	=> '；',
+	'<'	=> '＜',
+	'='	=> '＝',
+	'>'	=> '＞',
+	'?'	=> '？',
+	'A'	=> 'Ａ',
+	'B'	=> 'Ｂ',
+	'C'	=> 'Ｃ',
+	'D'	=> 'Ｄ',
+	'E'	=> 'Ｅ',
+	'F'	=> 'Ｆ',
+	'G'	=> 'Ｇ',
+	'H'	=> 'Ｈ',
+	'I'	=> 'Ｉ',
+	'J'	=> 'Ｊ',
+	'K'	=> 'Ｋ',
+	'L'	=> 'Ｌ',
+	'M'	=> 'Ｍ',
+	'N'	=> 'Ｎ',
+	'O'	=> 'Ｏ',
+	'P'	=> 'Ｐ',
+	'Q'	=> 'Ｑ',
+	'R'	=> 'Ｒ',
+	'S'	=> 'Ｓ',
+	'T'	=> 'Ｔ',
+	'U'	=> 'Ｕ',
+	'V'	=> 'Ｖ',
+	'W'	=> 'Ｗ',
+	'X'	=> 'Ｘ',
+	'Y'	=> 'Ｙ',
+	'Z'	=> 'Ｚ',
+	'['	=> '［',
+	'\\'=> '＼',
+	']'	=> '］',
+	'^'	=> '＾',
+	'_'	=> '＿',
+	'a'	=> 'ａ',
+	'b'	=> 'ｂ',
+	'c'	=> 'ｃ',
+	'd'	=> 'ｄ',
+	'e'	=> 'ｅ',
+	'f'	=> 'ｆ',
+	'g'	=> 'ｇ',
+	'h'	=> 'ｈ',
+	'i'	=> 'ｉ',
+	'j'	=> 'ｊ',
+	'k'	=> 'ｋ',
+	'l'	=> 'ｌ',
+	'm'	=> 'ｍ',
+	'n'	=> 'ｎ',
+	'o'	=> 'ｏ',
+	'p'	=> 'ｐ',
+	'q'	=> 'ｑ',
+	'r'	=> 'ｒ',
+	's'	=> 'ｓ',
+	't'	=> 'ｔ',
+	'u'	=> 'ｕ',
+	'v'	=> 'ｖ',
+	'w'	=> 'ｗ',
+	'x'	=> 'ｘ',
+	'y'	=> 'ｙ',
+	'z'	=> 'ｚ',
+	'{'	=> '｛',
+	'|'	=> '｜',
+	'}'	=> '｝',
+	'~'	=> '〜',
 };
+	
 
 sub encode_doubletile($){
 	my($line)=@_;
 	
+	$line.="";
+	
 	my $pos=0;
 	my $res="";
 	my $return_point=0;
+	my $insert_point=0;
 	my $return_res="";
 	
 	while($pos<length $line){
@@ -190,28 +284,29 @@ sub encode_doubletile($){
 		$r=' ' if $r eq '';
 		
 		my $seq="$l$r";
-		my $have_next=defined $doubles_hash->{"$r$rr"};
 		my $have_prev=defined $doubles_hash->{"$ll$l"};
 		
 		$return_point=-1
-			if $pos>1 and not ($have_next and $have_prev);
+			if $pos>1 and not $have_prev;
 		
 		if($l eq ' '){
 			$return_point=$pos;
+			$insert_point=$pos;
 			$return_res=$res;
 		} elsif($r eq ' '){
-			$return_point=$pos+1;
-			$return_res=$res.$l;
+			$return_point=$pos;
+			$insert_point=$pos+1;
+			$return_res=$res;
 		}
 		
 		if(defined $doubles_hash->{$seq}){
 			$res.=pack "n",$doubles_codes->{$seq};
 			$pos+=2;
 		} else{
-			if($rr and $ll and $have_next and $have_prev and $return_point!=-1){
-				$pos=($return_point+1)&0xfffffffe;
+			if($ll and $have_prev and $doubles_hash->{"$l "} and $return_point!=-1){
+				$pos=$return_point;
 				$res=$return_res;
-				substr $line,$pos,0,' ';
+				substr $line,$insert_point,0,' ';
 				redo;
 			}
 			
@@ -284,7 +379,9 @@ our $script_commands={
 };
 our @script_groups=qw/names/;
 
+sub maybe_slurp($;$){local $/;open my $h,"$_[0]" or return "";$_[1]?binmode $h,$_[1]:binmode $h; my $data=<$h>;close $h;$data}
 sub slurp($;$){local $/;open my $h,"$_[0]" or die "$! - $_[0]";$_[1]?binmode $h,$_[1]:binmode $h; my $data=<$h>;close $h;$data}
+sub spit($$;$){open my $h,">","$_[0]" or die "$! - $_[0]";$_[2]?binmode $h,$_[2]:binmode $h; print $h $_[1];close $h}
 
 sub list(@){
 	my @res;
