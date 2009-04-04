@@ -107,7 +107,7 @@ read $h,my $dirent,34;
 my $files=readdirent $h,dirent $dirent;
 
 my($file)=grep $_,map{$files->{"/PSP_GAME/USRDIR/YUMFILE_$_.BIN"}} 1,2,3;
-$file or die "Couldn't find file YUMFILE_1.BIN inside iso";
+$file or die "Couldn't find file YUMFILE_X.BIN inside iso";
 
 my $yumstart=$file->[1]*0x800;
 
