@@ -68,7 +68,7 @@ my @bmps=map{
 	$res
 } @filenames;
 
-my $subh=8;
+my $subh=$ua==0x3c80?1:8;
 my $subw=$bpp==8?0x10:0x20;
 my $wsubc=$width/$subw;
 

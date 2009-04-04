@@ -12,6 +12,8 @@ use constant DATABASE_DATABASE	=> 'idolmaster';
 BEGIN{ require "alphabet.pl" }
 our($single_chars,$single_chars_list,$single_chars_hash,$doubles_list,$doubles_hash,$doubles_codes,$doubles_table);
 
+sub mtime($){(stat $_[0])[9] or 0}
+
 sub valid_sjis($){
 	my($text)=@_;
 	
@@ -122,6 +124,8 @@ sub read_picture($$$){
 sub write_picture($$){
 	my($filename,$data)=@_;
 	
+	print "$filename\n";
+	
 	open my $bmp,">","$filename.bmp" or die "$! - $filename.bmp";
 	binmode $bmp;
 	
@@ -148,6 +152,7 @@ sub write_picture($$){
 	
 	close $bmp;
 	
+	unlink "$filename" or die;
 	`convert "$filename.bmp" "$filename"`;
 	-e "$filename" or die;
 
@@ -266,7 +271,6 @@ my $replacements={
 	'}'	=> '｝',
 	'~'	=> '〜',
 };
-	
 
 sub encode_doubletile($){
 	my($line)=@_;
@@ -313,7 +317,9 @@ sub encode_doubletile($){
 			$l=$replacements->{$l} if $replacements->{$l};
 			my $lj=encode "sjis",$l;
 			
-			die "Unexpected character: ``$l'' (".(ord $l).")" if 2!=length $lj;
+			if(2!=length $lj and $lj ne "\n"){
+				die "Unexpected character: ``$l'' (".(ord $l).")"
+			}
 			
 			$res.=$lj;
 			
@@ -323,6 +329,16 @@ sub encode_doubletile($){
 	}
 	
 	$res
+}
+
+sub encode_doubletile_control($){
+	my($line)=@_;
+	
+	join "",map{
+		(/^[%&]/?
+			encode_utf8($_): # ugh
+			encode_doubletile $_);
+	} $line=~/(\%\d*[a-z]|\&[a-z]|[^%&]+)/g
 }
 
 our $script_commands={
@@ -380,11 +396,12 @@ our $script_commands={
 our @script_groups=qw/names/;
 
 sub maybe_slurp($;$){local $/;open my $h,"$_[0]" or return "";$_[1]?binmode $h,$_[1]:binmode $h; my $data=<$h>;close $h;$data}
-sub slurp($;$){local $/;open my $h,"$_[0]" or die "$! - $_[0]";$_[1]?binmode $h,$_[1]:binmode $h; my $data=<$h>;close $h;$data}
-sub spit($$;$){open my $h,">","$_[0]" or die "$! - $_[0]";$_[2]?binmode $h,$_[2]:binmode $h; print $h $_[1];close $h}
+sub slurp($;$){local $/;open my $h,"$_[0]" or croak "$! - $_[0]";$_[1]?binmode $h,$_[1]:binmode $h; my $data=<$h>;close $h;$data}
+sub spit($$;$){open my $h,">","$_[0]" or croak "$! - $_[0]";$_[2]?binmode $h,$_[2]:binmode $h; print $h $_[1];close $h}
 
 sub list(@){
 	my @res;
+	my %options;
 	
 	for my $mask(@_){
 		push @res,$mask and next unless $mask=~/[\*\?]/;
@@ -408,6 +425,21 @@ sub list(@){
 		push @res,@list;
 	}
 
+	@res
+}
+
+sub rlist(@){
+	my @list=list @_;
+	my @res;
+
+	while($_=shift @list){
+		if(-d $_){
+			push @list,list "$_/*";
+		} else{
+			push @res,$_;
+		}
+	}
+	
 	@res
 }
 

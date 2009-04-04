@@ -69,7 +69,7 @@ die "$pngname can't be used to build $filename"
 
 my @palette=@{ $palettes[$paletteno] };
 
-`convert "$pngname" "$resfile.bmp"`;
+`convert "$pngname" -alpha on "$resfile.bmp"`;
 -e "$resfile.bmp" or die;
 
 open my $bmp,"$resfile.bmp" or die "$_ - $resfile.bmp";
@@ -78,7 +78,7 @@ my($head,$bmp_size,undef,undef,$bmp_offset,undef,$bmp_w,$bmp_h)=consume "a2ISSII
 die sprintf "Width doesn't match: pom has %d, your file has %d",$width,$bmp_w unless $width==$bmp_w;
 die sprintf "Height doesn't match: pom has %d, your file has %d",$height,$bmp_h unless $height==$bmp_h;
 
-my $subh=8;
+my $subh=$ua==0x3c80?1:8;
 my $subw=$bpp==8?0x10:0x20;
 my $wsubc=$width/$subw;
 
@@ -100,20 +100,21 @@ sub find_closest_color($){
 		
 #		printf "%02x%02x%02x%02x <=> %02x%02x%02x%02x $diff",
 #			$color->[0],$color->[1],$color->[2],$color->[3],
-#			$pc->[0],$pc->[1],$pc->[2],$pc->[3] if $color->[3]==0;
+#			$pc->[0],$pc->[1],$pc->[2],$pc->[3];
 		
 		if($diff<$range){
 			$range=$diff;
 			$index=$_;
-#			print " *\n"if $color->[3]==0;
+#			print " *\n";
 		} else{
-#			print "\n"if $color->[3]==0;
+#			print "\n";
 		}
 	}
 	
-#	print "====\n"if $color->[3]==0;
+#	print "====\n";
 	$index
 }
+
 
 for my $hblock(0..$height/$subh-1){
 	for my $wblock(0..$wsubc-1){
@@ -139,6 +140,7 @@ for my $hblock(0..$height/$subh-1){
 	}
 }
 
+exit;
 unlink "$resfile.bmp";
 
 
