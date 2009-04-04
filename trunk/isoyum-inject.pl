@@ -94,9 +94,10 @@ my $isofile=shift or usage;
 my $filename=shift or usage;
 my $fileno=shift;
 
+
 defined $fileno or ($fileno)=$filename=~/(?:.*\D|^)(\d+)/
 	or die "Couldn't figure out where to put file in archive";
-	
+
 open my $h,"+<",$isofile or die "$! - $isofile";
 binmode $h;
 
@@ -105,9 +106,9 @@ read $h,my $dirent,34;
 
 my $files=readdirent $h,dirent $dirent;
 
-my $file=$files->{'/PSP_GAME/USRDIR/YUMFILE_1.BIN'}
-	or die "Couldn't find file YUMFILE_1.BIN inside iso";
-	
+my($file)=grep $_,map{$files->{"/PSP_GAME/USRDIR/YUMFILE_$_.BIN"}} 1,2,3;
+$file or die "Couldn't find file YUMFILE_1.BIN inside iso";
+
 my $yumstart=$file->[1]*0x800;
 
 seek $h,$yumstart,0;

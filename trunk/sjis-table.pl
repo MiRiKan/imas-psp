@@ -66,11 +66,11 @@ sub mix(;$$$){
 
 my %duprem=map{$_=>1;}(
 	(mix "",		"$lc '-",	""),
-	(mix "$uc",		"$lc ",		""),
+	(mix "$uc",		"$lc ",		"-"),
 	(mix "I",		"'",		""),
-	(mix " -(\"",	"",			"$uc"),
+	(mix " (\"",	"",			"$uc"),
 	(mix "-",		"$di ",		",."),
-	(mix "$lc",		"",			".)"),
+	(mix "$lc",		"",			".),!"),
 	(mix '("',		"",			"$lc"),
 	(mix ',.!?:");',"",			" "),
 	(mix "",		".",		""),
@@ -128,4 +128,5 @@ print_code(Data::Dumper->Dump(
 ));
 
 print_count "Total of $count spare characters\n";
+print_count "Used ".@doubles."\n";
 

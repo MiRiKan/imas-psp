@@ -35,7 +35,7 @@ my $data;
 sub flush(;$){
 	my($last)=@_;
 	if($data){
-		write_picture("$no-x.png",$data);
+		write_picture("$no.png",$data);
 		$no++;
 	}
 	$data=(eval{read_picture("$no.png",16,16)} or "");

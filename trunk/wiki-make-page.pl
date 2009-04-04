@@ -14,6 +14,7 @@ my $mogrify="";
 my $user="";
 my $pass="";
 my $link="http://www.tsukuru.info/tlwiki/index.php";
+my $title="";
 
 GetOptions(
 	"files=s"		=> \$files,
@@ -22,7 +23,10 @@ GetOptions(
 	"user=s"		=> \$user,
 	"pass=s"		=> \$pass,
 	"link=s"		=> \$link,
+	"title=s"		=> \$title,
 );
+
+$mogrify="'$title'" if $title;
 
 sub usage(){die <<HERE}
 Usage: $0
@@ -95,7 +99,6 @@ my $response=$mech->post(
 		wpLoginAttempt=>"Log in"
 	]
 );
-
 die "couldn't login: ".$response->code unless $mech->content=~/You are now logged in/;
 
 for(@files){
@@ -112,7 +115,7 @@ for(@files){
 		form_name	=> 'editform',
 		fields		=> {
 			wpTextbox1  => $text,
-			wpSummary	=> "I am uploading scripts!",
+			wpSummary	=> "-1",
 		},
 		button		=> 'wpSave',
 	);

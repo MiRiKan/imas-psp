@@ -18,7 +18,9 @@ Decodes a script to human readable from. Will produce two files, .src with
 script logic and .txt with text.
 HERE
 
-my %translations=(
+my %translations=();
+
+(
 	あずさ			=> "Azusa",
 	おじさん			=> "Old man",
 	やよい			=> "Yayoi",
