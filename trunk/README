@@ -6,15 +6,16 @@ For this to work you need perl. If you're running windows you can use ActivePerl
 QUICK START GUIDE
 =================
 
-1. Extract .iso somewhere (umdgen program might be a good choice for this under windows. v4.00 seems to bne broken for me, but v3.00 works fine).
-2. Chdir to WHERE_YOU_EXTRACTED/PSP_GAME/USRDIR and do this: ``perl yum-unpack.pl YUMFILE_X.BIN'' (YUMFILE_1.BIN, YUMFILE_2.BIN, or YUMFILE_3.BIN dependig on which file is there).
-3. When archive is extracted, copy files from fonts directory into WHERE_YOU_EXTRACTED/PSP_GAME/USRDIR/YUMFILE_X/pom. (This adds english font to game).
-4. Convert script files from YUMFILE_X/script with ``script-decode.pl filename.script'', edit generated .txt files or replace them with edited versions from tlwiki.
-5. Convert them back into format game understands with ``script-encode.pl filename.script''.
-6. chdir to WHERE_YOU_EXTRACTED/PSP_GAME/USRDIR and execute ``yum-unpack.pl YUMFILE_X'' (notice there's no .BIN extension this time). This will create new modified YUMFILE_X.BIN archive.
-7. Remake .iso again, replacing original YUMFILE_X with the one you created (umdgen, umdgen).
-8. Upload .iso to your PSP and play the game.
-9. If you want to make more modifications, do this: ``perl isoyum-inject.pl ISO_FILE_ON_YOUR_PSP FILE_YOU_PREVIOSULY_EXTRACTED_AND_WANT_TO_INSERT_THERE''
+1.  Extract .iso somewhere (umdgen program might be a good choice for this under windows. v4.00 seems to bne broken for me, but v3.00 works fine).
+2.  If you don't have file lzss.exe in the directory with scripts (You should have it if you downloaded archive from google code), compile it with gcc lzss.c -o lzss
+3.  Chdir to WHERE_YOU_EXTRACTED/PSP_GAME/USRDIR and do this: ``perl yum-unpack.pl YUMFILE_X.BIN'' (YUMFILE_1.BIN, YUMFILE_2.BIN, or YUMFILE_3.BIN dependig on which file is there).
+4.  When archive is extracted, copy files from fonts directory into WHERE_YOU_EXTRACTED/PSP_GAME/USRDIR/YUMFILE_X/pom. (This adds english font to game).
+5.  Convert script files from YUMFILE_X/script with ``script-decode.pl filename.script'', edit generated .txt files or replace them with edited versions from tlwiki.
+6.  Convert them back into format game understands with ``script-encode.pl filename.script''.
+7.  chdir to WHERE_YOU_EXTRACTED/PSP_GAME/USRDIR and execute ``yum-unpack.pl YUMFILE_X'' (notice there's no .BIN extension this time). This will create new modified YUMFILE_X.BIN archive.
+8.  Remake .iso again, replacing original YUMFILE_X with the one you created (umdgen, umdgen).
+9.  Upload .iso to your PSP and play the game.
+10. If you want to make more modifications, do this: ``perl isoyum-inject.pl ISO_FILE_ON_YOUR_PSP FILE_YOU_PREVIOSULY_EXTRACTED_AND_WANT_TO_INSERT_THERE''
 
 
 UNPACKING ARCHIVE
