@@ -91,12 +91,6 @@ sub lzsse($){lzss(0,$_[0])}
 sub slurp($){local $/;open my $h,"$_[0]" or die "$! - $_[0]";binmode $h;my $data=<$h>;close $h;$data}
 
 my $isofile=shift or usage;
-my $filename=shift or usage;
-my $fileno=shift;
-
-
-defined $fileno or ($fileno)=$filename=~/(?:.*\D|^)(\d+)/
-	or die "Couldn't figure out where to put file in archive";
 
 open my $h,"+<",$isofile or die "$! - $isofile";
 binmode $h;
@@ -116,31 +110,36 @@ seek $h,$yumstart,0;
 my($head,$packs,$files,$off,$data_off,undef,undef)=consume "a8I6",$h;
 $head eq "YUM\0\0\0\0\0" or die "Not a yum file";
 
-$fileno>=$files
-	and die "File number is too high";
+for my $filename(@ARGV){
+	my($fileno)=$filename=~/(?:.*\D|^)(\d+)/;
+	defined $fileno or die "$filename: Couldn't figure out where to put file in archive";
+
+	$fileno>=$files
+		and die "$filename: File number is too high";
 	
-my $entryloc=$yumstart+32+$packs*16+$fileno*12;
+	my $entryloc=$yumstart+32+$packs*16+$fileno*12;
 
-seek $h,$entryloc,0;
-my($start,$size,$compressed)	= consume "I3",$h;
-my($nextstart)					= consume "I3",$h;
-my $space=$nextstart-$start;
+	seek $h,$entryloc,0;
+	my($start,$size,$compressed)	= consume "I3",$h;
+	my($nextstart)					= consume "I3",$h;
+	my $space=$nextstart-$start;
 
-my $data=slurp $filename;
-my $plainsize=$compressed?length $data:0;
+	my $data=slurp $filename;
+	my $plainsize=$compressed?length $data:0;
 
-$data=lzsse $data if $compressed;
+	$data=lzsse $data if $compressed;
 
-my $length=length $data;
+	my $length=length $data;
 
-die sprintf "%d bytes short: need %d bytes, have %d",$length-$space,$length,$space
-	if $length>$space;
+	die sprintf "$filename: %d bytes short: need %d bytes, have %d",$length-$space,$length,$space
+		if $length>$space;
 
-seek $h,$yumstart+$start,0;
-print $h $data;
-print $h "\xff"x($space-$length);
+	seek $h,$yumstart+$start,0;
+	print $h $data;
+	print $h "\xff"x($space-$length);
 
-seek $h,$entryloc,0;
-print $h pack "I3",$start,$length,$plainsize;
+	seek $h,$entryloc,0;
+	print $h pack "I3",$start,$length,$plainsize;
+}
 
 close $h;

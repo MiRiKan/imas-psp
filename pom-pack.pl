@@ -82,10 +82,14 @@ my $subh=$ua==0x3c80?1:8;
 my $subw=$bpp==8?0x10:0x20;
 my $wsubc=$width/$subw;
 
+my %color_matches;
 sub find_closest_color($){
 	my($color)=@_;
 	my $index=0;
 	my $range=0x0fffffff;
+	
+	my $key=join "|",@$color;
+	return $color_matches{$key} if defined $color_matches{$key};
 	
 	for(0..$#palette){
 		my $pc=$palette[$_];
@@ -111,8 +115,10 @@ sub find_closest_color($){
 		}
 	}
 	
+	
 #	print "====\n";
-	$index
+
+	$color_matches{$key}=$index;
 }
 
 

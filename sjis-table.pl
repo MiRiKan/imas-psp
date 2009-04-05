@@ -4,7 +4,15 @@ use Data::Dumper;
 
 binmode *STDOUT,":utf8";
 
-my $mode=shift;
+sub usage(){die <<HERE}
+Usage: $0 MODE
+Prints code for alphabet.pl if MODE=='code'. This code is used by other
+scripts to generate text.
+Prints html table with characters game uses if MODE=='html'.
+Prints count ofcharacters inserted into original game font if MODE=='count'.
+HERE
+
+my $mode=shift or usage;
 
 sub print_html;
 sub print_count;
@@ -12,9 +20,10 @@ sub print_code;
 
 sub nothing{};
 sub my_print{print @_};
-*print_html=$mode eq 'html'?\&my_print:\&nothing;
-*print_count=$mode eq 'count'?\&my_print:\&nothing;
-*print_code=$mode eq 'code'?\&my_print:\&nothing;
+sub maybe_print($){$mode eq $_[0]?\&my_print:\&nothing}
+*print_html=	maybe_print 'html';
+*print_count=	maybe_print 'count';
+*print_code=	maybe_print 'code';
 
 print_html '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en" dir="ltr"><head><meta http-equiv="Content-Type" content="text/html; charset=utf8" /><style>table,tr,td,th{border-collapse:collapse;border:1px solid #AAAAAA;text-align:center;}</style></head><body><table>';
 
@@ -68,14 +77,15 @@ my %duprem=map{$_=>1;}(
 	(mix "",		"$lc '-",	""),
 	(mix "$uc",		"$lc ",		"-"),
 	(mix "I",		"'",		""),
-	(mix " (\"",	"",			"$uc"),
+	(mix " \"",		"",			"$uc"),
 	(mix "-",		"$di ",		",."),
-	(mix "$lc",		"",			".),!"),
+	(mix "$lc",		"",			".),!~"),
 	(mix '("',		"",			"$lc"),
 	(mix ',.!?:");',"",			" "),
 	(mix "",		".",		""),
 	(mix "",		"!",		""),
 	(mix ')"',		"",			".,"),
+	(mix "O",		"",			"K"),
 );
 
 my @doubles=sort keys %duprem;

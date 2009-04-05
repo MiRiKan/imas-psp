@@ -15,7 +15,7 @@ QUICK START GUIDE
 7.  chdir to WHERE_YOU_EXTRACTED/PSP_GAME/USRDIR and execute ``yum-unpack.pl YUMFILE_X'' (notice there's no .BIN extension this time). This will create new modified YUMFILE_X.BIN archive.
 8.  Remake .iso again, replacing original YUMFILE_X with the one you created (umdgen, umdgen).
 9.  Upload .iso to your PSP and play the game.
-10. If you want to make more modifications, do this: ``perl isoyum-inject.pl ISO_FILE_ON_YOUR_PSP FILE_YOU_PREVIOSULY_EXTRACTED_AND_WANT_TO_INSERT_THERE''
+10. If you want to make more modifications, do this: ``perl isoyum-inject.pl ISO_FILE_ON_YOUR_PSP FILE_YOU_PREVIOSULY_EXTRACTED_AND_WANT_TO_INSERT_THERE'' (you don't need to rebuild yum again)
 
 
 UNPACKING ARCHIVE
@@ -58,7 +58,7 @@ It will create new script with changes you made that you can insert into game ar
 
 WORKING WITH PICTURES
 =====================
-Pictures are stored inside .pom files. Program that convers them, needs imagemagick installed: http://www.imagemagick.org/
+Pictures are stored inside .pom files. Program that converts them needs imagemagick installed: http://www.imagemagick.org/
 You can convert a pom file with this command:
 
 $ perl pom-unpack.pl 1694.pom
@@ -72,4 +72,15 @@ or, if there was many PNG files and you edited some other than the first one:
 $ perl pom-pack.pl 1694.pom 1694-42.png
 
 Be advised that .pom files have palettes in them -- they have only a limited set of colors, and this particular program does not change the palette. What this really means, though, is that if original .pom only had red color, even if you change PNG to green, it will turn up as red in game. When editing PNGs, try to preserve colors.
+
+Some pom pictures have a lot of so-called subpictures in them. Look at 57849.pom, it has a lot of words in it -- 営業, 取材, etc. Game uses each word separately, and to locate where in the picture these words are scattered, it uses .mif files. A .mif (multi image file?) is just a plain text list of rectangles, so you can modify it by hand. But this is tedious, so another program - mif-unpack.pl can be used to represent them visually. Change directory to where your pom files are located and type this:
+
+$ perl mif-unpack.pl 57848
+
+(Notice that picture is 57849.pom, but we run mif-pack.pl with 57848, less by one. .mif files that are associated with .poms usually have number that is 1 less or 1 more than .pom)
+This will create picture 57848.mif.png with lots of rectangles that are visual representations of the ones in .mif. Normally you wouldn't need all this, but in some cases, like 57849.pom's case, where 営業 translates as Promotion, and the word Promotion just doesn't fit, this is necessaty. Add .mif picture as layer to the pic you're editing, rearrange layout, save that modified layer, and generate .mif from it:
+
+$ perl mif-pack.pl 57848
+
+(see http://www.tsukuru.info/tlwiki/index.php?title=Idolmaster_SP:Pictures for some samples of modified .mifs)
 

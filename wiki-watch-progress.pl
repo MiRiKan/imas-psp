@@ -150,7 +150,7 @@ sub mech(){
 		"$link?title=Special:Userlogin&action=submitlogin",
 		Content=>[
 			wpName			=> 'Anonymous of Russian Federation',
-			wpPassword		=> '',
+			wpPassword		=> 'voidvoid',
 			wpRemember		=> "1",
 			wpLoginAttempt	=> "Log in"
 		]
@@ -180,14 +180,33 @@ sub wiki_edit($$$){
 }
 
 my %titles=map{$_->{title}=>1} recents;
+my %changed_pages;
 
 for(keys %titles){
-	next unless /Idolmaster SP:($cats):(\d+)/;
+	next unless /Idolmaster[ _]SP:($cats):(\d+)/;
 	my($cat,$no)=($1,$2);
 	
 	my $difference=differences $cat,$no;
 	if($difference!=$stored->{"$cat$no"} and $stored->{"$cat$no"}>=0){
 		$stored->{"$cat$no"}=$difference;
+		$must_remake{$cat}=1;
+		
+		print "E $cat$no => $difference\n";
+		
+		$changed_pages{"$cat$no"}=1;
+	}
+}
+
+for(keys %$aliases){
+	next unless /Idolmaster[ _]SP:($cats):(\d+)/;
+	my($cat,$no)=($1,$2);
+	next unless $aliases->{$_}=~/Idolmaster[ _]SP:($cats):(\d+)/;
+	my($tcat,$tno)=($1,$2);
+	
+	if($changed_pages{"$tcat$tno"}){
+		$stored->{"$cat$no"}=$stored->{"$tcat$tno"};
+		$changed_pages{"$cat$no"}=1;
+		print "L $cat$no => $stored->{qq{$tcat$tno}}\n";
 		$must_remake{$cat}=1;
 	}
 }
