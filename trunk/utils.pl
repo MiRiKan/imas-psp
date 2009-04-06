@@ -452,6 +452,7 @@ sub eatline($;$){
 		return undef if eof $h;
 		$_=<$h>;
 		chomp;
+		s/^\x{feff}//;
 		
 		return "" if $stop_on_whitespace and 0==length $_;
 		
