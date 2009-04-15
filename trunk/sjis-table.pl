@@ -42,6 +42,7 @@ my @protected;
 #my @protected=(0x8740..0x8775,0x877e,0x8780..0x879c,0xec81..0xec8a,0xec96..0xec98,0xec9d..0xecbf,0xecc1..0xed80,0xed84..0xedc2,0xedc4..0xee83,0xee87..0xee92);
 
 my $count=0;
+my $total=0;
 
 my $lc="abcdefghijklmnopqrstuvwxyz";
 my $uc=uc $lc;
@@ -137,6 +138,7 @@ print_code(Data::Dumper->Dump(
 	[qw(single_chars	single_chars_list	single_chars_hash		doubles_list	doubles_hash	doubles_codes		doubles_table	table_locations)]
 ));
 
+print_count "Total of ".@list." spare characters\n";
 print_count "Total of $count spare characters\n";
 print_count "Used ".@doubles."\n";
 

@@ -149,8 +149,8 @@ sub mech(){
 	my $response=$mech->post(
 		"$link?title=Special:Userlogin&action=submitlogin",
 		Content=>[
-			wpName			=> 'Anonymous of Russian Federation',
-			wpPassword		=> 'voidvoid',
+			wpName			=> 'bot',
+			wpPassword		=> '',
 			wpRemember		=> "1",
 			wpLoginAttempt	=> "Log in"
 		]
