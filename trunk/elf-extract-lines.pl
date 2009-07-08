@@ -99,13 +99,26 @@ for($sections{".rodata"},$sections{".data"}){
 		next if $jisline ne $line;
 		next unless $utfline=~/(\p{Han}|\p{Katakana}|\p{Hiragana}|[Ａ-Ｚａ-ｚ])/;
 		
+		next if $pos>=0x2cac42 and $pos<=0x2da078;
+		next if $pos>=0x2db5de and $pos<=0x2e0624;
+		next if $pos>=0x2e144a and $pos<=0x2e3594;
+		next if $pos>=0x2e4ac8 and $pos<=0x2eed8e;
+		next if $pos>=0x2efaac and $pos<=0x2f3079;
+		next if $pos>=0x2f8390 and $pos<=0x2ff94d;
+		next if $pos>=0x3092fa and $pos<=0x3098e6;
+		next if $pos>=0x30a2fe and $pos<=0x30a2fe;
+		next if $pos>=0x30a580 and $pos<=0x312bb4;
+		next if $pos>=0x314be2 and $pos<=0x327164;
+		next if $pos>=0x374364 and $pos<=0x377bca;
+		next if $pos>=0x37a210 and $pos<=0x4c1130;
+
 		$utfline=~s/\\/\\\\/g;
 		$utfline=~s/\n/\\n/g;
 		$utfline=~s/\r/\\r/g;
 		
 #		die sprintf "%08x $line < $utfline > $jisline",$_ unless $line eq $jisline;
 		
-		printf $res "%08x % 5d %s\n",$pos,$length,$utfline;
+		printf $res "%08x (%08x) % 5d %s\n",$pos,$pos-$_->[4]+$_->[3],$length,$utfline;
 	}
 }
 

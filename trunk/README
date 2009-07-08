@@ -6,7 +6,7 @@ For this to work you need perl. If you're running windows you can use ActivePerl
 QUICK START GUIDE
 =================
 
-1.  Extract .iso somewhere (umdgen program might be a good choice for this under windows. v4.00 seems to bne broken for me, but v3.00 works fine).
+1.  Extract .iso somewhere (umdgen program might be a good choice for this under windows. v4.00 seems to be broken for me, but v3.00 works fine).
 2.  If you don't have file lzss.exe in the directory with scripts (You should have it if you downloaded archive from google code), compile it with gcc lzss.c -o lzss
 3.  Chdir to WHERE_YOU_EXTRACTED/PSP_GAME/USRDIR and do this: ``perl yum-unpack.pl YUMFILE_X.BIN'' (YUMFILE_1.BIN, YUMFILE_2.BIN, or YUMFILE_3.BIN dependig on which file is there).
 4.  When archive is extracted, copy files from fonts directory into WHERE_YOU_EXTRACTED/PSP_GAME/USRDIR/YUMFILE_X/pom. (This adds english font to game).

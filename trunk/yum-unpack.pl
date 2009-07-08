@@ -10,8 +10,12 @@ use lib $home;
 
 BEGIN{ require "utils.pl" }
 
+
 my %padfiles=(
 	script		=> "0x2000",
+	"mail.txt"	=> "0x2000",
+	"txt"		=> "0x2000",
+	mif			=> "0x40",
 );
 my $nocom=0;
 
@@ -180,6 +184,7 @@ if(-f $filename){
 			$fileno++;
 			print $indeksu "%%\n";
 		}
+		
 		$packno++;
 		
 		printf "\r                           \r%d/%d",$packno,scalar @packs;
