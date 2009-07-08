@@ -146,8 +146,6 @@ for my $hblock(0..$height/$subh-1){
 	}
 }
 
-exit;
 unlink "$resfile.bmp";
 
 
-exit;

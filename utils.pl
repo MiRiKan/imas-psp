@@ -397,7 +397,14 @@ our @script_groups=qw/names/;
 
 sub maybe_slurp($;$){local $/;open my $h,"$_[0]" or return "";$_[1]?binmode $h,$_[1]:binmode $h; my $data=<$h>;close $h;$data}
 sub slurp($;$){local $/;open my $h,"$_[0]" or croak "$! - $_[0]";$_[1]?binmode $h,$_[1]:binmode $h; my $data=<$h>;close $h;$data}
-sub spit($$;$){open my $h,">","$_[0]" or croak "$! - $_[0]";$_[2]?binmode $h,$_[2]:binmode $h; print $h $_[1];close $h}
+sub spit($$;$){open my $h,">","$_[0]" or croak "$! - $_[0]";$_[2]?binmode $h,$_[2]:binmode $h; print $h $_[1] or croak "$! - $_[0]";close $h}
+
+sub uniq($@){
+	my $sub=shift;
+	my %seen;
+	
+	grep{not $seen{&$sub}++} @_
+}
 
 sub list(@){
 	my @res;

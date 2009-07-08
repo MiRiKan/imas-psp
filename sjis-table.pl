@@ -10,6 +10,7 @@ Prints code for alphabet.pl if MODE=='code'. This code is used by other
 scripts to generate text.
 Prints html table with characters game uses if MODE=='html'.
 Prints count ofcharacters inserted into original game font if MODE=='count'.
+Prints C source code of table with characters game uses if MODE=='C'.
 HERE
 
 my $mode=shift or usage;
@@ -17,6 +18,7 @@ my $mode=shift or usage;
 sub print_html;
 sub print_count;
 sub print_code;
+sub print_c;
 
 sub nothing{};
 sub my_print{print @_};
@@ -24,6 +26,7 @@ sub maybe_print($){$mode eq $_[0]?\&my_print:\&nothing}
 *print_html=	maybe_print 'html';
 *print_count=	maybe_print 'count';
 *print_code=	maybe_print 'code';
+*print_c=		maybe_print 'C';
 
 print_html '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en" dir="ltr"><head><meta http-equiv="Content-Type" content="text/html; charset=utf8" /><style>table,tr,td,th{border-collapse:collapse;border:1px solid #AAAAAA;text-align:center;}</style></head><body><table>';
 
