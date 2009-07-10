@@ -13,11 +13,11 @@ char *unpad(char *s,char c){
 	return s;
 }
 
-int rwops::read(char *,size_t){
+int rwops::read(void *,size_t){
 
 	return 0;
 }
-int rwops::write(char *,size_t){
+int rwops::write(void *,size_t){
 
 	return 0;
 }
@@ -54,20 +54,28 @@ QString rwops::readline(){
 	return "";
 }
 
+int rwops::line(){
+	return 0;
+}
 
 rwfile::rwfile(const QString & f)
 		:file(f),filename(f){
 	if(!file.open(QIODevice::ReadWrite))
 		issue=QString("%1 - %2").arg(filename).arg(file.errorString());
+
+	lineno=0;
 }
 
-int rwfile::read(char *data,size_t count){
-	return file.read(data,count);
+int rwfile::read(void *data,size_t count){
+	lineno=0;
+	return file.read((char *)data,count);
 }
-int rwfile::write(char *data,size_t count){
-	return file.write(data,count);
+int rwfile::write(void *data,size_t count){
+	lineno=0;
+	return file.write((char *)data,count);
 }
 void rwfile::seek(qint64 loc){
+	lineno=0;
 	file.seek(loc);
 }
 rwops *rwfile::clone(){
@@ -80,7 +88,11 @@ QString rwfile::readline(){
 
 	QByteArray arr=file.readLine();
 
+	lineno++;
 	return QString::fromUtf8(arr.data(),arr.size());
+}
+int rwfile::line(){
+	return lineno;
 }
 
 
@@ -122,7 +134,7 @@ rwbound::rwbound(rwops *orig,qint64 sstart,qint64 ssize)
 	file->seek(pos);
 }
 
-int rwbound::read(char *data,size_t count){
+int rwbound::read(void *data,size_t count){
 	if(pos+count>start+size)
 		count=start+size-pos;
 
@@ -130,7 +142,7 @@ int rwbound::read(char *data,size_t count){
 	pos+=count;
 	return count;
 }
-int rwbound::write(char *data,size_t count){
+int rwbound::write(void *data,size_t count){
 	if(pos+count>start+size)
 		count=start+size-pos;
 
@@ -150,8 +162,57 @@ void rwbound::seek(qint64 loc){
 rwops *rwbound::clone(){
 	return new rwbound(file,start,size);
 }
+int rwbound::line(){
+	return file->line();
+}
 rwbound::~rwbound(){
 	delete file;
+}
+
+int rwmemfile::read(void *data,size_t count){
+	if(pos+count>size) count=size-pos;
+
+	memcpy(data,dd+pos,count);
+	pos+=count;
+
+	return count;
+}
+int rwmemfile::write(void *data,size_t count){
+	if(pos+count>size) count=size-pos;
+
+	memcpy(dd+pos,data,count);
+	pos+=count;
+
+	return count;
+}
+void rwmemfile::seek(qint64 loc){
+	pos=loc;
+	if(pos>size) pos=size;
+}
+rwops *rwmemfile::clone(){
+	return new rwmemfile(dd,size);
+}
+
+rwmemfile::rwmemfile(void *data,qint64 insize){
+	dd=new char[size=insize];
+	memcpy(dd,data,size);
+	pos=0;
+}
+rwmemfile::~rwmemfile(){
+	delete dd;
+}
+
+quint32 Yum::size(){
+	quint32 v[3];
+
+	rw->seek(entryloc);
+	rw->read((char *)v,sizeof(v));
+
+	quint32
+		size			= v[1],
+		uncompressed	= v[2];
+	
+	return uncompressed==0?size:uncompressed;
 }
 
 void Yum::spit(char *in,size_t insize){
@@ -176,7 +237,10 @@ void Yum::spit(char *in,size_t insize){
 	}
 
 	if(datasize>next-start){
-		issue="Not enough space";
+		issue=QString("not enough space; short by %1 bytes: need %2 have %3")
+			  .arg(datasize-(next-start))
+			  .arg(datasize)
+			  .arg(next-start);
 		return;
 	}
 	v[1]=datasize;
@@ -188,6 +252,28 @@ void Yum::spit(char *in,size_t insize){
 	rw->write((char *)v,sizeof(quint32)*3);
 }
 
+
+rwmemfile *Yum::torw(){
+	char *data;
+	quint32 count=slurp(&data);
+
+	rwmemfile *f=new rwmemfile(data,count);
+
+	delete[] data;
+
+	return f;
+}
+
+QByteArray Yum::slurp(){
+	char *data;
+	quint32 count=slurp(&data);
+
+	QByteArray res(data,count);
+
+	delete[] data;
+
+	return res;
+}
 quint32 Yum::slurp(char **out){
 	quint32 v[3];
 
@@ -216,12 +302,12 @@ quint32 Yum::slurp(char **out){
 		*out=data;
 		return size;
 	}
-
 }
 
 Yum::Yum(rwops *orig,int no)
 		:rw(orig){
 	char data[0x20];
+	rw->seek(0);
 	rw->read(data,sizeof(data));
 
 	if(memcmp(data,"YUM\0\0\0\0\0",8)){
@@ -266,11 +352,12 @@ void Iso::readdirent(int location,const QString & path){
 
 		if(s[0]<0x20) continue;
 
-		QString thispath=QString("%1/%2").arg(path).arg(s);
+		QString thispath=QString("%1/%2").arg(path).arg(s).toUpper();
+
 
 		if(type&2) readdirent(loc,thispath);
-		else       entries[thispath.toUpper()]=new IsoEntry(loc,esize);
-//		QMessageBox::about(NULL,"",thispath);
+		else       entries[thispath]=new IsoEntry(loc,esize);
+	//	QMessageBox::about(NULL,"",thispath);
 	}
 }
 

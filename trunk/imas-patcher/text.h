@@ -17,6 +17,7 @@ struct ImasScriptNode{
 	QByteArray data;
 	QByteArray text;
 	int group;
+	int line;
 };
 
 struct ImasScript{
@@ -32,12 +33,14 @@ struct ImasScript{
 };
 
 class ImasScriptText{
+public:
 	QList<QString> names;
 	QList<QString> lines;
+	QList<int> linenos;
 
-public:
 	QString name(int no);
 	QString line(int no);
+	int lineno(int no);
 
 	ImasScriptText(rwops *source);
 

@@ -84,7 +84,7 @@ QByteArray text_encode(const QString & source,QString *issue){
 			return_point=-1;
 
 			if((code=replacements_hash.value(l))==0){
-				if(issue) *issue=QString("Unexpected character: %1 (U+%2, %3)").arg(QChar(l)).arg(l,4,16,(QChar)'0').arg(l<=0xffff?ucs_names[l]:"NONAME");
+				if(issue) *issue=QString("unexpected character: %1 (U+%2, %3)").arg(QChar(l)).arg(l,4,16,(QChar)'0').arg(l<=0xffff?ucs_names[l]:"NONAME");
 				return NULL;
 			}
 
@@ -105,7 +105,7 @@ QByteArray text_encode(const QString & source,QString *issue){
 	if(issue) *issue="";
 
 	if(aa.length()%2!=0){
-		if(issue) *issue="Internal error; length of encoded string is incorrect";
+		if(issue) *issue="internal error; length of encoded string is incorrect";
 	}
 
 	return aa;
@@ -153,6 +153,7 @@ ImasScript::ImasScript(rwops *rw){
 		node->group=SCIPT_GROUP_NONE;
 		node->text.clear();
 		node->data.clear();
+		node->line=rw->line();
 
 		if(com.mid(0,3)=="com")		node->com=com.mid(3,2).toInt(NULL,16);
 		else if(com=="display")		node->com=0x00;
@@ -167,7 +168,7 @@ ImasScript::ImasScript(rwops *rw){
 		else if(com=="sound")		node->com=0x12;
 		else{
 			delete node;
-			issue=QString("Unknown command: %1").arg(com);
+			issue=QString("unknown command: %1").arg(com);
 			return;
 		}
 
@@ -194,7 +195,7 @@ ImasScript::ImasScript(rwops *rw){
 				node->group=SCIPT_GROUP_TEXT;
 			} else{
 				delete node;
-				issue=QString("Unexpected token: %1").arg(token);
+				issue=QString("unexpected token: %1").arg(token);
 				return;
 			}
 		}
@@ -243,6 +244,10 @@ ImasScriptText::ImasScriptText(rwops *source){
 			continue;
 		}
 
+		// special case, so that people can copy-paste scripts
+		// from wiki.
+		if(state==0 && trimmed=="<nowiki>") continue;
+
 		if(state==0 && trimmed!="Names"){
 			issue="Script does not start with ``Names''";
 			return;
@@ -266,6 +271,7 @@ ImasScriptText::ImasScriptText(rwops *source){
 		}
 
 		lines.append(line);
+		linenos.append(source->line());
 	}
 }
 
@@ -274,6 +280,9 @@ QString ImasScriptText::name(int no){
 }
 QString ImasScriptText::line(int no){
 	return lines.value(no,"");
+}
+int ImasScriptText::lineno(int no){
+	return linenos.value(no,0);
 }
 
 
