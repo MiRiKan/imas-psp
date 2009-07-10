@@ -2,5 +2,10 @@
     <qresource prefix="/icons" >
         <file>imas.ico</file>
         <file>logo-small.png</file>
+        <file>icons/work.png</file>
+        <file>icons/disk.png</file>
+    </qresource>
+    <qresource prefix="/pictures" >
+        <file>transparent-background.png</file>
     </qresource>
 </RCC>

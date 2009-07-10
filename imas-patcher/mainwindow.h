@@ -18,6 +18,7 @@ using namespace QtConcurrent;
 #define JOB_REPLACE_SCRIPT		3
 #define JOB_REPLACE_LINES		4
 
+
 struct JobItem{
 	int type;
 	QString desc;
@@ -33,9 +34,81 @@ struct JobItem{
 		:type(a),desc(x),source(b),isofile(c),difficulty(d),number(e) {}
 };
 
-class MainWindow;
+
+#define JOB_STATE_OK		0
+#define JOB_STATE_FAILED	1
+#define JOB_STATE_WARNINGS	2
+#define JOB_STATE_SKIPPED	3
+#define JOB_STATE_AUTO		4
+
+struct ResourceData{
+	int type;
+	QUrl name;
+	QVariant data;
+};
+
+struct GenericJob{
+	QString desc;
+	QString issue;
+	int state;
+	int difficulty;
+
+	QString source;
+	rwops *file;
+
+	QString iso_filename;
+	rwops *isofile;
+
+	virtual void process();
+	QStringList output;
+
+	QString type;
+
+	void fail(const QString & s){state=JOB_STATE_FAILED;issue=s;close();}
+
+	QList<ResourceData *> resources;
+
+	void close();
+	virtual ~GenericJob();
+};
+
+struct IsoFileJob :public GenericJob{
+	void process();
+};
+
+struct ExecutableLinesJob :public GenericJob{
+	void process();
+};
+
+struct YumFileJob :public GenericJob{
+	int number;
+
+	void process();
+};
+
+struct YumScriptJob :public YumFileJob{
+	void process();
+};
+
+struct YumMailJob :public YumFileJob{
+	void process();
+};
+
+struct YumPomJob :public YumFileJob{
+	int subnumber;
+
+	void process();
+};
+
+struct YumCopyJob :public YumFileJob{
+	int target;
+
+	void process();
+};
 
 #define SETTINGS() QSettings settings("Andrey Osenenko","imas-patcher")
+
+class MainWindow;
 
 class WorkerThread : public QThread{
 	Q_OBJECT
@@ -55,7 +128,6 @@ public slots:
 	void Cancel();
 };
 
-
 class MainWindow : public QMainWindow{
     Q_OBJECT
 
@@ -64,10 +136,12 @@ public:
 	~MainWindow();
 
     Ui::MainWindow *ui;
-	QFutureWatcher<void> watcher;
-	QList<JobItem *> jobs;
+	QList<GenericJob *> jobs;
 	QErrorMessage message;
 	Iso *iso;
+	QString isoFilename;
+
+	QList<ResourceData *> resources;
 
 	WorkerThread thread;
 
@@ -81,13 +155,15 @@ public:
 	void dragEnterEvent(QDragEnterEvent *event);
 	void dropEvent(QDropEvent *event);
 
-	void report(const QString & title,const QString & text,int success=0);
+	void report(const QString & title,const QString & text,QList<ResourceData *> *resources=NULL,int success=0);
 
 
 private slots:
+
 	void on_jobs_started();
 	void on_jobs_finished();
 
+	void on_removeFileButton_clicked();
 	void on_deleteFileButton_clicked();
 	void on_selectIsoButton_clicked();
     void on_doItButton_clicked();

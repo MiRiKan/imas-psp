@@ -7,6 +7,7 @@
 
 #include "patcher.h"
 #include "text.h"
+#include "pom.h"
 
 extern "C"{
 #include "lzss.h"
@@ -74,7 +75,7 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow(){
 	SETTINGS();
 	settings.setValue("main-window-geometry",saveGeometry());
-	settings.setValue("main-window-iso",ui->isoEdit->text());
+	settings.setValue("main-window-iso",isoFilename);
 
 	QStringList items;
 	for(int i=0,l=ui->listWidget->count();i<l;i++){
@@ -86,154 +87,371 @@ MainWindow::~MainWindow(){
     delete ui;
 }
 
-void mapfunc(JobItem *job,MainWindow *window){
+void GenericJob::process(){
+}
+
+void GenericJob::close(){
+	delete file;	file=NULL;
+	delete isofile;	isofile=NULL;
+}
+
+GenericJob::~GenericJob(){
+	close();
+}
+
+void IsoFileJob::process(){
+	char buff[0x400];
+	int count;
+	while((count=file->read(buff,sizeof(buff)))!=0){
+		ASSUME(isofile->write(buff,count)==count,"Not enough space");
+	}
+
+	state=JOB_STATE_OK;
+	return;
+
+error:
+	state=JOB_STATE_FAILED;
+}
+
+void ExecutableLinesJob::process(){
+	QString line;
+	QRegExp reg("(\\s*[0-9a-fA-F]{8})\\s+(\\d+) ([^\r\n]*)\r?\n?");
+	QRegExp remove_comments("\\s*#.*$");
 	QString issue;
 
-	if(job->type==JOB_NOTHING) return;
-	if(job->dup) return;
+	int succ=0,noise=0,skipped=0;
 
-	rwops *isofile=window->iso->open(job->isofile);
-	if(isofile==NULL){
-		job->issue=QString("%1 (inside iso) - %2").arg(job->isofile).arg(window->iso->issue);
-		return;
+	while(!(line=file->readline()).isNull()){
+		line.remove(remove_comments);
+
+		if(!reg.exactMatch(line)){
+			if(!line.trimmed().isEmpty()){
+				output.append(QString("line %1: couldn't parse").arg(file->line()));
+				noise++;
+			}
+			continue;
+		}
+
+		ulong address=reg.cap(1).toULong(NULL,16);
+		long size=reg.cap(2).toLong(NULL,10);
+		QString reline=reg.cap(3);
+
+		QByteArray bytes=text_encode_control(reline,&issue);
+		if(!issue.isEmpty()){
+			skipped++;
+			output.append(QString("line %1: couldn't encode text: %2")
+						  .arg(file->line())
+						  .arg(issue));
+			continue;
+		}
+
+		if(bytes.count()>size){
+			skipped++;
+			output.append(QString("line %5: %1 Can't insert: short by %2 bytes -- have %3 need %4")
+						  .arg(address,8,16,QChar('0'))
+						  .arg(bytes.count()-size)
+						  .arg(size)
+						  .arg(bytes.count())
+						  .arg(file->line()));
+			continue;
+		}
+
+		isofile->seek(address);
+		isofile->write(bytes.data(),bytes.count());
+		for(int i=0,c=size-bytes.size();i<c;i++)
+			isofile->write((char *)"",1);
+
+		succ++;
 	}
 
-	rwfile file(job->source);
-	if(!job->source.isEmpty() && !file.issue.isEmpty()){
-		delete isofile;
-		job->issue=QString("%1 - %2").arg(job->source).arg(file.issue);
-		return;
+	if(noise==0 && skipped==0){
+		if(succ==0)
+			output.append(QString("File was empty")),
+			state=JOB_STATE_WARNINGS;
+		else
+			output.append(QString("Successfully inserted %1 lines").arg(succ)),
+			state=JOB_STATE_OK;
+	} else if(succ!=0){
+		state=JOB_STATE_WARNINGS;
+	} else{
+		state=JOB_STATE_FAILED;
 	}
+}
 
-	switch(job->type){
-	case JOB_REPLACE_ISO:{
-		char buff[0x400];
-		int count;
-		while((count=file.read(buff,sizeof(buff)))!=0){
-			int written=isofile->write(buff,count);
-			if(written!=count){
-				job->issue="Not enough space";
+void YumFileJob::process(){
+	size_t c;
+	char *data;
+
+	Yum y(isofile,number);
+	ASSUME(y.issue.isEmpty(),y.issue);
+
+	data=file->slurp(&c);
+	y.spit(data,c);
+	delete[] data;
+
+	ASSUME(y.issue.isEmpty(),y.issue);
+
+	state=JOB_STATE_OK;
+	return;
+
+error:
+	state=JOB_STATE_FAILED;
+}
+
+void YumScriptJob::process(){try{
+	rwfile rw(QString("scripts/%1.src").arg(number));
+	TASSUME(rw.issue.isEmpty(),rw.issue);
+
+	ImasScript script(&rw);
+	TASSUME(script.issue.isEmpty(),QString("scripts/%1.src: %2").arg(number).arg(script.issue));
+
+	ImasScriptText text(file);
+	TASSUME(text.issue.isEmpty(),text.issue);
+
+	int lineno=0;
+	for(int i=0;i<script.nodes.count();i++){
+		QString errstr;
+		ImasScriptNode *node=script.nodes.value(i);
+
+		if(node->group==SCIPT_GROUP_TEXT){
+			if(text.lines.count()<=lineno){
+				issue="Not enough lines in script file you supplied";
+				state=JOB_STATE_FAILED;
 				return;
 			}
+
+			node->text=text_encode(text.line(lineno),&errstr);
+			if(!errstr.isEmpty()){
+				output.append(QString("line %1: couldn't encode text: %2")
+						.arg(text.lineno(lineno))
+						.arg(errstr));
+			}
+
+			lineno++;
+		} else if(node->group>=SCIPT_GROUP_NAME){
+			int nameno=node->group-SCIPT_GROUP_NAME;
+
+			if(text.names.count()<nameno){
+				issue="Not enough names in script file you supplied";
+				state=JOB_STATE_FAILED;
+				return;
+			}
+
+			node->text=text_encode(text.name(nameno),&errstr);
+			if(!errstr.isEmpty()){
+				output.append(QString("Couldn't encode name ``%1'': %2")
+						.arg(text.name(nameno))
+						.arg(errstr));
+			}
 		}
-
-		break;}
-	case JOB_REPLACE_LINES:{
-		QString line;
-		QRegExp reg("([0-9a-fA-F]{8})\\s+(\\d+) ([^\r\n]*)\r?\n?");
-		QRegExp remove_comments("\\s*#.*$");
-
-		while(!(line=file.readline()).isNull()){
-			if(!reg.exactMatch(line)) continue;
-
-			bool ok;
-			ulong address=reg.cap(1).toULong(&ok,16);
-			ASSUME(ok,QString("Expected address, got ``%1''").arg(reg.cap(1)));
-
-			long size=reg.cap(2).toLong(&ok,10);
-			ASSUME(ok,QString("Expected size, got ``%1''").arg(reg.cap(2)));
-
-			QString reline=reg.cap(3);
-			reline.remove(remove_comments);
-
-			QByteArray bytes=text_encode_control(reline,&issue);
-			CHECK();
-
-			ASSUME(bytes.count()<=size,QString("%1: Can't insert: short by %2 bytes -- have %3 need %4")
-											 .arg(address,8,16,QChar('0'))
-											 .arg(bytes.count()-size)
-											 .arg(size)
-											 .arg(bytes.count()));
-
-			isofile->seek(address);
-			isofile->write(bytes.data(),bytes.count());
-			for(int i=0,c=size-bytes.size();i<c;i++)
-				isofile->write((char *)"",1);
-		}
-
-		break;}
-	case JOB_REPLACE_YUM:{
-		Yum y(isofile,job->number);
-		if(!y.issue.isEmpty()){
-			job->issue=y.issue;
-			break;
-		}
-
-		size_t c;
-		char *data=file.slurp(&c);
-		y.spit(data,c);
-		delete[] data;
-
-		break;}
-	case JOB_REPLACE_SCRIPT:{
-		rwfile rw(QString("scripts/%1.src").arg(job->number));
-		ASSUME(rw.issue.isEmpty(),rw.issue);
-
-		ImasScript script(&rw);
-		ASSUME(script.issue.isEmpty(),script.issue);
-
-		ImasScriptText text(&file);
-		ASSUME(text.issue.isEmpty(),text.issue);
-
-		int lineno=0;
-		for(int i=0;i<script.nodes.count();i++){
-			ImasScriptNode *node=script.nodes.value(i);
-
-			if(node->group==SCIPT_GROUP_TEXT)
-				node->text=text_encode(text.line(lineno++),&issue);
-			else if(node->group>=SCIPT_GROUP_NAME)
-				node->text=text_encode(text.name(node->group-SCIPT_GROUP_NAME),&issue);
-
-			ASSUME(issue.isEmpty(),issue);
-		}
-
-		QByteArray bytes=script.spit();
-		ASSUME(script.issue.isEmpty(),script.issue);
-
-		Yum y(isofile,job->number);
-		ASSUME(y.issue.isEmpty(),y.issue);
-
-		y.spit(bytes.data(),bytes.size());
-		ASSUME(y.issue.isEmpty(),y.issue);
-
-		break;}
 	}
 
-/*	if(job->number!=-1){
-		QFile out(QString("%1.txt").arg(job->number));
-		out.open(QIODevice::WriteOnly);
+	if(text.lines.count()!=lineno)
+		output.append("Too many lines in script file you supplied");
 
-		isofile->seek(0);
-		Yum y(isofile,job->number);
+	QByteArray bytes=script.spit();
+	TASSUME(script.issue.isEmpty(),script.issue);
 
-		char *data;
-		size_t c=y.slurp(&data);
+	Yum y(isofile,number);
+	TASSUME(y.issue.isEmpty(),y.issue);
 
-		out.write(data,c);
-		delete[] data;
-	}*/
+	y.spit(bytes.data(),bytes.size());
+	TASSUME(y.issue.isEmpty(),y.issue);
 
-	if(isofile) delete isofile;
+	if(output.isEmpty()){
+		state=JOB_STATE_OK;
+	} else{
+		state=JOB_STATE_WARNINGS;
+	}
+} catch(QString ss){
+	state=JOB_STATE_FAILED;
+}}
 
-	return;
-error:
-	if(isofile) delete isofile;
-	job->issue=issue;
-}
+void YumMailJob::process(){try{
+	state=JOB_STATE_OK;
+
+	QByteArray bytes;
+
+	QRegExp leaveUntouched("^##");
+
+	QString line;
+	while(!(line=file->readline()).isNull()){
+		QChar c;
+		while(!line.isEmpty() && (c=line.at(line.length()-1),c=='\r' || c=='\n'))
+			line.chop(1);
+
+		if(leaveUntouched.indexIn(line)==-1){
+			QByteArray arr=line.toAscii();
+			bytes.append(arr);
+			bytes.append("\r\n",2);
+			continue;
+		}
+
+		QString errstr;
+		QByteArray arr=text_encode_control(line,&errstr);
+		if(!errstr.isEmpty()){
+			state=JOB_STATE_WARNINGS;
+			output+=QString("line %1: could not encode text: %2")
+					.arg(file->line())
+					.arg(errstr);
+		}
+
+		bytes.append(arr);
+		bytes.append("\r\n",2);
+	}
+
+	Yum y(isofile,number);
+	TASSUME(y.issue.isEmpty(),y.issue);
+
+	y.spit(bytes.data(),bytes.size());
+	TASSUME(y.issue.isEmpty(),y.issue);
+
+} catch(QString ss){
+	state=JOB_STATE_FAILED;
+}}
+
+
+#define SHOW_ORIGINAL_FILE
+void YumPomJob::process(){try{
+	Yum y(isofile,number);
+	TASSUME(y.issue.isEmpty(),y.issue);
+
+	PomFile pom(y.torw());
+	TASSUME(pom.issue.isEmpty(),QString("File %1 inside yum archive - %2").arg(number).arg(pom.issue));
+
+	QString picname=QString("%1-%2(%3)")
+					.arg(number)
+					.arg(subnumber)
+					.arg(qrand());
+
+	QImage replacementImage(source);
+	TASSUME(!replacementImage.isNull(),"Could not load picture (Is it corrupted?)");
+
+#ifdef SHOW_ORIGINAL_FILE
+	ResourceData *resource=new ResourceData();
+	resource->data=QVariant(replacementImage);
+	resource->type=QTextDocument::ImageResource;
+	resource->name=QUrl(QString("imas-pictures://%1-orig.png").arg(picname));
+	resources.append(resource);
+#else
+	QImage *originalImage=pom.get(subnumber);
+	TASSUME(originalImage,pom.issue);
+
+	ResourceData *resource=new ResourceData();
+	resource->data=QVariant(*originalImage);
+	resource->type=QTextDocument::ImageResource;
+	resource->name=QUrl(QString("imas-pictures://%1-orig.png").arg(picname));
+	resources.append(resource);
+	delete originalImage;
+#endif
+
+	PomConversionResult conv=pom.set(subnumber,&replacementImage);
+	TASSUME(pom.issue.isEmpty(),pom.issue);
+
+	QByteArray res=pom.spit();
+	y.spit(res.data(),res.size());
+	TASSUME(y.issue.isEmpty(),y.issue);
+
+	QImage *replacedImage=pom.get(subnumber);
+	TASSUME(replacedImage,pom.issue);
+	resource=new ResourceData();
+	resource->data=QVariant(*replacedImage);
+	resource->type=QTextDocument::ImageResource;
+	resource->name=QUrl(QString("imas-pictures://%1.png").arg(picname));
+	resources.append(resource);
+	delete replacedImage;
+
+	int difference=conv.avgDiff*100/(0x400-4);
+	int maxdifference=conv.maxDiff*100/(0x400-4);
+#ifdef SHOW_ORIGINAL_FILE
+	if(difference>=2){
+#else
+	if(difference>=0){
+#endif
+		output.append(QString::fromUtf8(
+			"<span style='color:#9f4a3c'>(%2% average difference in pictures due to lack of colors in palette; peak difference - %3%)</span>"
+			"<p style='vertical-align:middle;'>"
+				"<img src='imas-pictures://%1-orig.png' />"
+				" <span style='font-size:28pt;'>→</span> "
+				"<img src='imas-pictures://%1.png' />"
+			"</p>")
+				  .arg(picname)
+				  .arg(difference)
+				  .arg(maxdifference));
+		state=JOB_STATE_WARNINGS;
+	} else{
+		output.append(QString::fromUtf8(
+			"<p style='vertical-align:middle;'>"
+				"<img src='imas-pictures://%1.png' />"
+			"</p>")
+				  .arg(picname));
+		state=JOB_STATE_OK;
+	}
+
+
+} catch(QString ss){
+	state=JOB_STATE_FAILED;
+}}
+
+void YumCopyJob::process(){try{
+	TASSUME(number!=target,QString("Trying to copy file %1 into itself").arg(number));
+
+	Yum y(isofile,number);
+	TASSUME(y.issue.isEmpty(),y.issue);
+
+	QByteArray bytes=y.slurp();
+	TASSUME(y.issue.isEmpty(),y.issue);
+
+	Yum yy(isofile,target);
+	TASSUME(yy.issue.isEmpty(),yy.issue);
+
+	if(yy.size()!=0){
+		yy.spit(bytes.data(),bytes.size());
+		TASSUME(yy.issue.isEmpty(),yy.issue);
+	}
+
+	state=JOB_STATE_AUTO;
+} catch(QString ss){
+	state=JOB_STATE_FAILED;
+}}
+
 
 
 void WorkerThread::run(){
 	emit Start();
-	
+
 	emit Range(0,window->jobs.count()-1);
 	emit Value(0);
 
 	cancelled=false;
 
+
 	for(int i=0;i<window->jobs.count();i++){
 		emit Value(i);
 
-		mapfunc(window->jobs.at(i),window);
+		GenericJob *job=window->jobs.at(i);
+
+		if(!job->source.isEmpty()){
+			job->file=new rwfile(job->source);
+			if(!job->file->issue.isEmpty()){
+				job->fail(job->file->issue);
+				continue;
+			}
+		} else job->file=NULL;
+
+		if(!job->iso_filename.isEmpty()){
+			job->isofile=window->iso->open(job->iso_filename);
+			if(job->isofile==NULL){
+				job->fail(QString("%1 (inside iso) - %2").arg(job->iso_filename).arg(window->iso->issue));
+				continue;
+			}
+		} else job->isofile=NULL;
+
+		job->process();
+
+		window->resources.append(job->resources);
+
+		job->close();
 	}
 
 	emit Finish();
@@ -243,6 +461,31 @@ void WorkerThread::Cancel(){
 	cancelled=true;
 }
 
+struct dup_entry{unsigned short no;const char *dups;};
+
+dup_entry yum_dups_list[]={
+#include "dups.c.inc"
+};
+
+static QHash<unsigned short,const char *> yum_dups_hash;
+static QList<unsigned short> yum_dups(unsigned short no){
+	if(yum_dups_hash.isEmpty()){
+		for(uint i=0;i<sizeof(yum_dups_list)/sizeof(yum_dups_list[0]);i++){
+			yum_dups_hash.insert(yum_dups_list[i].no,yum_dups_list[i].dups);
+		}
+	}
+
+	QList<unsigned short> res;
+
+	const unsigned short *dd=(const unsigned short *)yum_dups_hash.value(no);
+	if(dd==NULL) return res;
+
+	unsigned short number;
+	while((number=*dd++)!=0xffff)
+		res.append(number);
+
+	return res;
+}
 
 void MainWindow::on_doItButton_clicked(){
 	int len=ui->listWidget->count();
@@ -251,7 +494,7 @@ void MainWindow::on_doItButton_clicked(){
 
 	ui->doItButton->setEnabled(false);
 
-	iso=new Iso(ui->isoEdit->text());
+	iso=new Iso(isoFilename);
 	if(!iso->issue.isEmpty()){
 		carp(iso->issue);
 		delete iso;
@@ -277,10 +520,13 @@ void MainWindow::on_doItButton_clicked(){
 		ui->doItButton->setEnabled(true);
 		carp("None of YUMFILE_1.BIN YUMFILE_2.BIN or YUMFILE_3.BIN were found in iso");
 		return;
-	};
+	}
 
 	QHash<QString,int> dups;
-	JobItem *item;
+	GenericJob *job;
+
+	QRegExp imageFile("(\\d+)(-(\\d+)|)\\.(png|gif|jpe?g|bmp)$");
+	QRegExp emailFile("(\\d+)\\.mail\\.txt$");
 
 	for(int i=0;i<len;i++){
 		QString file=ui->listWidget->item(i)->text();
@@ -288,51 +534,94 @@ void MainWindow::on_doItButton_clicked(){
 		QString ext=fileext(file);
 		int no=isanumberfile(name);
 
-		if(name.toUpper()=="EBOOT.BIN"){
-			jobs.append(item=new JobItem(
-				JOB_REPLACE_ISO,	"EBOOT.BIN",
-				file,				"/PSP_GAME/SYSDIR/EBOOT.BIN",
-				1
-			));
+		if(dups.contains(file)){
+			job=new GenericJob();
+			job->issue="Skipped: already in the list";
+			job->state=JOB_STATE_SKIPPED;
+			job->difficulty=0;
+			job->type="NONE";
+			no=-1;
+		} else if(name.toUpper()=="EBOOT.BIN"){
+			job=new IsoFileJob();
+			job->difficulty=1;
+			job->iso_filename="/PSP_GAME/SYSDIR/EBOOT.BIN";
+			job->type="ISO-FILE";
 		} else if(file.right(10)==".lines.txt"){
-			jobs.append(item=new JobItem(
-				JOB_REPLACE_LINES,	name,
-				file,				"/PSP_GAME/SYSDIR/EBOOT.BIN",
-				1
-			));
+			job=new ExecutableLinesJob();
+			job->difficulty=1;
+			job->iso_filename="/PSP_GAME/SYSDIR/EBOOT.BIN";
+			job->type="EXEC-LINES";
+		} else if(emailFile.indexIn(name)!=-1){
+			YumMailJob *yjob=new YumMailJob();
+			yjob->number=no=emailFile.cap(1).toInt();
+			job=yjob;
+			job->difficulty=1;
+			job->iso_filename=yum;
+			job->type="EMAIL";
 		} else if(no!=-1 && ext=="txt"){
-			jobs.append(item=new JobItem(
-				JOB_REPLACE_SCRIPT,	QString("%1").arg(no),
-				file,				yum,
-				1,
-				no
-			));
+			YumScriptJob *yjob=new YumScriptJob();
+			yjob->number=no;
+			job=yjob;
+			job->difficulty=3;
+			job->iso_filename=yum;
+			job->type="SCRIPT";
+		} else if(imageFile.indexIn(name)!=-1){
+			YumPomJob *yjob=new YumPomJob();
+			yjob->number=no=imageFile.cap(1).toInt();
+			bool ok;
+			yjob->subnumber=imageFile.cap(3).toInt(&ok);
+			if(!ok) yjob->subnumber=1;
+			job=yjob;
+			job->difficulty=3;
+			job->iso_filename=yum;
+			job->type="POM";
 		} else if(no!=-1){
-			jobs.append(item=new JobItem(
-				JOB_REPLACE_YUM,	QString("%1.%2").arg(no).arg(ext),
-				file,				yum,
-				1,
-				no
-			));
+			YumFileJob *yjob=new YumFileJob();
+			yjob->number=no;
+			job=yjob;
+			job->difficulty=1;
+			job->iso_filename=yum;
+			job->type="YUM-FILE";
 		} else{
-			jobs.append(item=new JobItem(
-				JOB_NOTHING,		name,
-				"",					"",
-				0
-			));
-
-			item->issue="Don't know what to do with this file";
+			job=new GenericJob();
+			job->difficulty=0;
+			job->state=JOB_STATE_SKIPPED;
+			job->type="NONE";
+			job->issue="Don't know what to do with this file";
 		}
 
-		if((item->dup=dups.contains(file)))
-			item->issue="Skipped: already in the list";
 		dups.insert(file,1);
+		job->source=file;
+		if(job->desc.isEmpty()) job->desc=name;
+
+		jobs.append(job);
+
+		if(no!=-1){
+			QList<unsigned short> d=yum_dups(no);
+			for(int i=0;i<d.count();i++){
+				int n=d.at(i);
+
+				YumCopyJob *yjob=new YumCopyJob();
+				yjob->number=no;
+				yjob->target=n;
+				yjob->difficulty=1;
+				yjob->type="COPY";
+				yjob->desc=QString("%1.pom").arg(n);
+				yjob->output+=QString("Duplicate of %1").arg(name);
+				yjob->source=job->source;
+				yjob->iso_filename=job->iso_filename;
+
+
+				jobs.append(yjob);
+			}
+		}
 	}
 
 	thread.start();
 
 	ok();
 }
+
 
 void MainWindow::on_jobs_started(){
 	ui->progressBar->show();
@@ -343,38 +632,85 @@ void MainWindow::on_jobs_finished(){
 
 	delete iso;
 
-	QString text="<table style='border-c0ollapse: collapse;'>";
+	QString text=
+		"<table style='border-collapse: collapse;'>"
+			"<tr style='background: #efefef;'>"
+				"<td style='padding:0 0.1em 0 0.1em;'>File name</td>"
+				"<td style='padding:0 0.1em 0 0.1em;'>Job type</td>"
+				"<td style='padding:0 0.1em 0 0.1em;'>Result</td>"
+			"</tr>";
 
-	int errors=0,successes=0;
+	int counts[5]={0,};
+	const char *colors[]={
+		"#efe",		// JOB_STATE_OK
+		"#fee",		// JOB_STATE_FAILED
+		"#ffe",		// JOB_STATE_WARNINGS
+		"#eee",		// JOB_STATE_SKIPPED
+		"#f2f8f2"	// JOB_STATE_AUTO
+	};
+
+	int succ=0,failed=0;
 
 	for(int i=0;i<jobs.count();i++){
-		JobItem *j=jobs.at(i);
+		GenericJob *j=jobs.at(i);
 
-		QString comment=j->issue,color="#fee";
-		if(j->issue.isEmpty())
-			comment="ok!",color="#efe",successes++;
-		else if(j->dup)
-			color="#eee";
-		else
-			errors++;
+		counts[j->state]++;
+		if(j->state!=JOB_STATE_OK && j->state!=JOB_STATE_AUTO) failed++;
+		else succ++;
 
-		text+=QString("<tr style='background: %3;'><td style='padding:0 0.1em 0 0.1em;'>%1</td><td style='padding:0 0.1em 0 0.1em;border-left=1px dotted;'>%2</td>").arg(j->desc).arg(comment).arg(color);
+		QString comment=j->issue;
+		if(comment.isEmpty()){
+			if(!j->output.isEmpty())
+				comment=j->output.join("<br />");
+			else switch(j->state){
+			case JOB_STATE_OK:			comment="ok!"; break;
+			case JOB_STATE_FAILED:		comment="failed!"; break;
+			case JOB_STATE_WARNINGS:	comment="completed with warnings"; break;
+			case JOB_STATE_SKIPPED:		comment="skipped"; break;
+			case JOB_STATE_AUTO:		comment="auto"; break;
+			default:					comment="MISSINGNO"; break; // fuck yeah stack broken by counts array!
+			}
+		}
+
+		text+=QString(
+			"<tr style='background: %1;'>"
+				"<td style='padding:0 0.1em 0 0.1em;'>%2</td>"
+				"<td style='padding:0 0.1em 0 0.1em;'>%3</td>"
+				"<td style='padding:0 0.1em 0 0.1em;'>%4</td>"
+			"</tr>"
+		).arg(colors[j->state])
+		 .arg(j->desc)
+		 .arg(j->type)
+		 .arg(comment);
 	}
 
 	text+="</table>";
 
 	QString title;
-	if(errors==0){
+	if(failed==0){
 		title="All ok!";
 
 		text.prepend("<h1>All jobs completed succesfully.</h1><hr />");
 	} else{
-		title=QString("Completed with %1 errors").arg(errors);
+		title=QString("%1 jobs completed successfully; ").arg(succ);
+		QStringList list;
+		if(counts[JOB_STATE_FAILED]!=0)
+			list.append(QString("%1 errors").arg(counts[JOB_STATE_FAILED]));
+		if(counts[JOB_STATE_WARNINGS]!=0)
+			list.append(QString("%1 warnings").arg(counts[JOB_STATE_WARNINGS]));
+		if(counts[JOB_STATE_SKIPPED]!=0)
+			list.append(QString("%1 skipped").arg(counts[JOB_STATE_SKIPPED]));
 
-		text.prepend(QString("<h1><span style='color: red'>Errors!</span> Completed %1 out of %2 jobs.</h1><hr />").arg(successes).arg(jobs.count()));
+		title.append(list.join(", "));
+
+		text.prepend(QString("<h1>%1</h1><hr />").arg(title));
+
+		title=QString("Completed %1 out of %2 jobs.").arg(succ).arg(succ+failed);
 	}
 
-	report(title,text,errors==0);
+	report(title,text,&resources,failed==0);
+
+	CLEAR_LIST(resources);
 
 	CLEAR_LIST(jobs);
 
@@ -387,7 +723,7 @@ void MainWindow::carp(const QString & cause){
 		return;
 	}
 
-	ui->statusBar->showMessage(cause,5000);
+	ui->statusBar->showMessage(QString("Error: %1").arg(cause),5000);
 }
 void MainWindow::ok(){
 	ui->statusBar->clearMessage();
@@ -396,16 +732,10 @@ void MainWindow::ok(){
 void MainWindow::selectIso(const QString & path){
 	if(path.isEmpty()) return;
 
-	Iso iso(path);
+	isoFilename=path;
+	ui->selectIsoButton->setDescription(QString("Currently selected: %1")
+		.arg(isoFilename.isEmpty()?"None":isoFilename));
 
-	if(!iso.issue.isEmpty()){
-		carp(iso.issue);
-		return;
-	}
-
-	ui->isoGroupBox->setTitle(QString("ISO: %1").arg(iso.volume));
-
-	ui->isoEdit->setText(path);
 	ok();
 }
 
@@ -415,7 +745,7 @@ void MainWindow::on_selectIsoButton_clicked(){
     path=QFileDialog::getOpenFileName(
         this,
         "Choose ISO",
-		ui->isoEdit->text(),
+		isoFilename,
         QString::null);
 
     if(path=="") return;
@@ -450,6 +780,15 @@ void MainWindow::on_deleteFileButton_clicked(){
 	}
 }
 
+void MainWindow::on_removeFileButton_clicked(){
+	for(int i=0;i<ui->listWidget->count();++i){
+		if(!ui->listWidget->item(i)->isSelected()) continue;
+
+		delete ui->listWidget->takeItem(i);
+		i--;
+	}
+}
+
 void MainWindow::addFile(const QString & name, int level){
 	if(level<0) return;
 
@@ -459,7 +798,7 @@ void MainWindow::addFile(const QString & name, int level){
 		dir.setFilter(QDir::Files);
 		QStringList list=dir.entryList();
 		for(int i=0;i<list.size();++i){
-			addFile(list.at(i),level-1);
+			addFile(QString("%1/%2").arg(name).arg(list.at(i)),level-1);
 		}
 
 		return;
@@ -483,7 +822,7 @@ void MainWindow::dropEvent(QDropEvent *event){
 	}
 }
 
-void MainWindow::report(const QString & title,const QString & text,int success){
+void MainWindow::report(const QString & title,const QString & text,QList<ResourceData *> *resources,int success){
 	SETTINGS();
 	bool noshowonsuccess=settings.value("report-window-don't-show-on-success")==true;
 	if(success==1 && noshowonsuccess) return;
@@ -491,11 +830,19 @@ void MainWindow::report(const QString & title,const QString & text,int success){
 	Ui_Dialog dui;
 	QDialog *dialog=new QDialog(this);
 	dui.setupUi(dialog);
+
+	if(resources)
+	for(int i=0;i<resources->count();i++){
+		ResourceData *data=resources->at(i);
+		dui.textBrowser->document()->addResource(data->type,data->name,data->data);
+	}
+
 	dui.textBrowser->setHtml(text);
 	dui.showOnSuccessBox->setChecked(noshowonsuccess);
 	dialog->setWindowTitle(title);
 
 	if(success==-1) dui.showOnSuccessBox->setVisible(false);
+
 
 	dialog->restoreGeometry(settings.value("report-window-geometry").toByteArray());
 	dialog->exec();
@@ -509,4 +856,3 @@ void MainWindow::about(){
 	About about(this);
 	about.exec();
 }
-
