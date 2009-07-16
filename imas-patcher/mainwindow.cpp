@@ -8,6 +8,7 @@
 #include "patcher.h"
 #include "text.h"
 #include "pom.h"
+#include "mif.h"
 
 extern "C"{
 #include "lzss.h"
@@ -310,9 +311,11 @@ void YumMailJob::process(){try{
 	state=JOB_STATE_FAILED;
 }}
 
-
 #define SHOW_ORIGINAL_FILE
 void YumPomJob::process(){try{
+	QImage replacementImage(source);
+	TASSUME(!replacementImage.isNull(),"Could not load picture (Is it corrupted?)");
+
 	Yum y(isofile,number);
 	TASSUME(y.issue.isEmpty(),y.issue);
 
@@ -323,9 +326,6 @@ void YumPomJob::process(){try{
 					.arg(number)
 					.arg(subnumber)
 					.arg(qrand());
-
-	QImage replacementImage(source);
-	TASSUME(!replacementImage.isNull(),"Could not load picture (Is it corrupted?)");
 
 #ifdef SHOW_ORIGINAL_FILE
 	ResourceData *resource=new ResourceData();
@@ -393,6 +393,38 @@ void YumPomJob::process(){try{
 	state=JOB_STATE_FAILED;
 }}
 
+
+void YumMifJob::process(){try{
+	QImage image(source);
+	TASSUME(!image.isNull(),"Could not load picture (Is it corrupted?)");
+
+	Yum y(isofile,number);
+	TASSUME(y.issue.isEmpty(),y.issue);
+
+	MifFile mif(y.torw());
+	TASSUME(mif.issue.isEmpty(),QString("File %1 inside yum archive - %2").arg(number).arg(mif.issue));
+
+	MifConversionResult res=mif.read(image);
+	TASSUME(mif.issue.isEmpty(),QString("File %1 inside yum archive - %2").arg(number).arg(mif.issue));
+
+	QByteArray bytes=mif.spit();
+	y.spit(bytes.data(),bytes.count());
+	TASSUME(y.issue.isEmpty(),y.issue);
+
+
+	state=JOB_STATE_OK;
+//	if(res.remapped!=0)
+//		output+=QString("%1 overlapping rectangles were remapped").arg(res.remapped),
+//		state=JOB_STATE_WARNINGS;
+	if(res.skipped!=0)
+		output+=QString("%1 rectangles were not present in picture and were skipped").arg(res.skipped),
+		state=JOB_STATE_WARNINGS;
+
+} catch(QString ss){
+	state=JOB_STATE_FAILED;
+}}
+
+
 void YumCopyJob::process(){try{
 	TASSUME(number!=target,QString("Trying to copy file %1 into itself").arg(number));
 
@@ -405,7 +437,7 @@ void YumCopyJob::process(){try{
 	Yum yy(isofile,target);
 	TASSUME(yy.issue.isEmpty(),yy.issue);
 
-	if(yy.size()!=0){
+	if(yy.size!=0){
 		yy.spit(bytes.data(),bytes.size());
 		TASSUME(yy.issue.isEmpty(),yy.issue);
 	}
@@ -434,7 +466,6 @@ void WorkerThread::run(){
 		if(!job->source.isEmpty()){
 			job->file=new rwfile(job->source);
 			if(!job->file->issue.isEmpty()){
-				job->fail(job->file->issue);
 				continue;
 			}
 		} else job->file=NULL;
@@ -490,6 +521,11 @@ static QList<unsigned short> yum_dups(unsigned short no){
 void MainWindow::on_doItButton_clicked(){
 	int len=ui->listWidget->count();
 
+	if(isoFilename.isEmpty()){
+		carp("iso not selected");
+		return;
+	}
+
 	if(len==0) return;
 
 	ui->doItButton->setEnabled(false);
@@ -525,6 +561,7 @@ void MainWindow::on_doItButton_clicked(){
 	QHash<QString,int> dups;
 	GenericJob *job;
 
+	QRegExp mifFile("(\\d+)\\.mif\\.png$");
 	QRegExp imageFile("(\\d+)(-(\\d+)|)\\.(png|gif|jpe?g|bmp)$");
 	QRegExp emailFile("(\\d+)\\.mail\\.txt$");
 
@@ -538,33 +575,34 @@ void MainWindow::on_doItButton_clicked(){
 			job=new GenericJob();
 			job->issue="Skipped: already in the list";
 			job->state=JOB_STATE_SKIPPED;
-			job->difficulty=0;
 			job->type="NONE";
 			no=-1;
 		} else if(name.toUpper()=="EBOOT.BIN"){
 			job=new IsoFileJob();
-			job->difficulty=1;
 			job->iso_filename="/PSP_GAME/SYSDIR/EBOOT.BIN";
 			job->type="ISO-FILE";
 		} else if(file.right(10)==".lines.txt"){
 			job=new ExecutableLinesJob();
-			job->difficulty=1;
 			job->iso_filename="/PSP_GAME/SYSDIR/EBOOT.BIN";
 			job->type="EXEC-LINES";
 		} else if(emailFile.indexIn(name)!=-1){
 			YumMailJob *yjob=new YumMailJob();
 			yjob->number=no=emailFile.cap(1).toInt();
 			job=yjob;
-			job->difficulty=1;
 			job->iso_filename=yum;
 			job->type="EMAIL";
 		} else if(no!=-1 && ext=="txt"){
 			YumScriptJob *yjob=new YumScriptJob();
 			yjob->number=no;
 			job=yjob;
-			job->difficulty=3;
 			job->iso_filename=yum;
 			job->type="SCRIPT";
+		} else if(mifFile.indexIn(name)!=-1){
+			YumMifJob *yjob=new YumMifJob();
+			yjob->number=no=mifFile.cap(1).toInt();
+			job=yjob;
+			job->iso_filename=yum;
+			job->type="MIF";
 		} else if(imageFile.indexIn(name)!=-1){
 			YumPomJob *yjob=new YumPomJob();
 			yjob->number=no=imageFile.cap(1).toInt();
@@ -572,19 +610,16 @@ void MainWindow::on_doItButton_clicked(){
 			yjob->subnumber=imageFile.cap(3).toInt(&ok);
 			if(!ok) yjob->subnumber=1;
 			job=yjob;
-			job->difficulty=3;
 			job->iso_filename=yum;
 			job->type="POM";
 		} else if(no!=-1){
 			YumFileJob *yjob=new YumFileJob();
 			yjob->number=no;
 			job=yjob;
-			job->difficulty=1;
 			job->iso_filename=yum;
 			job->type="YUM-FILE";
 		} else{
 			job=new GenericJob();
-			job->difficulty=0;
 			job->state=JOB_STATE_SKIPPED;
 			job->type="NONE";
 			job->issue="Don't know what to do with this file";
@@ -604,7 +639,6 @@ void MainWindow::on_doItButton_clicked(){
 				YumCopyJob *yjob=new YumCopyJob();
 				yjob->number=no;
 				yjob->target=n;
-				yjob->difficulty=1;
 				yjob->type="COPY";
 				yjob->desc=QString("%1.pom").arg(n);
 				yjob->output+=QString("Duplicate of %1").arg(name);
@@ -719,14 +753,12 @@ void MainWindow::on_jobs_finished(){
 
 void MainWindow::carp(const QString & cause){
 	if(cause.isEmpty()){
-		ok();
-		return;
+		ok(); return;
 	}
 
-	ui->statusBar->showMessage(QString("Error: %1").arg(cause),5000);
+	report("Error",QString("<h1>Error</h1><hr /><p>%1</p>").arg(cause));
 }
 void MainWindow::ok(){
-	ui->statusBar->clearMessage();
 }
 
 void MainWindow::selectIso(const QString & path){

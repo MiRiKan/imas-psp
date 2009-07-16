@@ -4,6 +4,7 @@
         <file>logo-small.png</file>
         <file>icons/work.png</file>
         <file>icons/disk.png</file>
+        <file>icons/500px-UMD.svg.png</file>
     </qresource>
     <qresource prefix="/pictures" >
         <file>transparent-background.png</file>

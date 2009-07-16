@@ -32,10 +32,14 @@ public:
 	virtual int read(void *data,size_t count);
 	virtual int write(void *data,size_t count);
 	virtual void seek(qint64 loc);
+	virtual qint64 tell();
 	virtual rwops *clone();
+
+	qint64 size();
 
 	virtual QString readline();
 
+	int lineno;
 	virtual int line();
 
 	char *slurp(size_t *size);
@@ -53,11 +57,11 @@ public:
 	int read(void *data,size_t count);
 	int write(void *data,size_t count);
 	void seek(qint64 loc);
+	qint64 tell();
 	rwops *clone();
 
 	QString readline();
 	int line();
-	int lineno;
 
 	QString issue;
 
@@ -72,6 +76,7 @@ public:
 	int read(void *data,size_t count);
 	int write(void *data,size_t count);
 	void seek(qint64 loc);
+	qint64 tell();
 	virtual rwops *clone();
 
 	int line();
@@ -88,6 +93,7 @@ public:
 	int read(void *data,size_t count);
 	int write(void *data,size_t count);
 	void seek(qint64 loc);
+	qint64 tell();
 	virtual rwops *clone();
 
 	rwmemfile(void *data,qint64 size);
@@ -101,7 +107,7 @@ class Yum{
 
 public:
 	void spit(char *data,size_t size);
-	quint32 size();
+	quint32 size,uncompressed;
 
 	quint32 slurp(char **out);
 	QByteArray slurp();
