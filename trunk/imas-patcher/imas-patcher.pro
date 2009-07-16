@@ -9,15 +9,18 @@ SOURCES += text.cc \
     mainwindow.cpp \
     main.cpp \
     lzss.c \
-    about.cpp
+    about.cpp \
+    mif.cc
 HEADERS += ui_report.h \
     text.h \
     pom.h \
     patcher.h \
     mainwindow.h \
     lzss.h \
-    about.h
+    about.h \
+    mif.h
 OTHER_FILES += imas-patcher.rc
 FORMS += mainwindow.ui \
     about.ui
 RESOURCES += resource.qrc
+RC_FILE = imas-patcher.rc

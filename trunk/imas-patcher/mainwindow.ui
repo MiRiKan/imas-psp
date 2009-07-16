@@ -44,7 +44,7 @@
       </property>
       <property name="icon">
        <iconset resource="resource.qrc">
-        <normaloff>:/icons/icons/disk.png</normaloff>:/icons/icons/disk.png</iconset>
+        <normaloff>:/icons/icons/500px-UMD.svg.png</normaloff>:/icons/icons/500px-UMD.svg.png</iconset>
       </property>
       <property name="iconSize">
        <size>
@@ -183,11 +183,6 @@
      </widget>
     </item>
    </layout>
-  </widget>
-  <widget class="QStatusBar" name="statusBar">
-   <property name="sizeGripEnabled">
-    <bool>true</bool>
-   </property>
   </widget>
   <widget class="QMenuBar" name="menuBar">
    <property name="geometry">

@@ -24,6 +24,10 @@ int rwops::write(void *,size_t){
 void rwops::seek(qint64){
 
 }
+qint64 rwops::tell(){
+	return 0;
+}
+
 char *rwops::slurp(size_t *size){
 	size_t blocks=1;
 	char *data=new char[blocks*0x800];
@@ -42,7 +46,15 @@ char *rwops::slurp(size_t *size){
 	if(size) *size=(blocks-1)*0x800+c;
 	return data;
 }
+qint64 rwops::size(){
+	qint64 p=tell();
 
+	seek(((qint64)1)<<63);
+	qint64 res=tell();
+	seek(p);
+
+	return res;
+}
 rwops *rwops::clone(){
 	return new rwops();
 }
@@ -50,12 +62,24 @@ rwops::~rwops(){
 
 }
 
+
 QString rwops::readline(){
-	return "";
+	QByteArray a;
+	char c;
+
+	if(tell()==0) lineno=0;
+
+	while(read(&c,1)!=0 && c!='\n')
+		a.append(c);
+
+	a.append('\n');
+
+	lineno++;
+	return QString::fromUtf8(a);
 }
 
 int rwops::line(){
-	return 0;
+	return lineno;
 }
 
 rwfile::rwfile(const QString & f)
@@ -78,10 +102,12 @@ void rwfile::seek(qint64 loc){
 	lineno=0;
 	file.seek(loc);
 }
+qint64 rwfile::tell(){
+	return file.pos();
+}
 rwops *rwfile::clone(){
 	return new rwfile(filename);
 }
-
 QString rwfile::readline(){
 	if(file.atEnd())
 		return NULL;
@@ -94,40 +120,6 @@ QString rwfile::readline(){
 int rwfile::line(){
 	return lineno;
 }
-
-
-/*
-rwfile::rwfile(const QString & f)
-		:filename(f){
-	QByteArray a=f.toUtf8();
-	file=fopen(a.data(),"rwb");
-
-	if(file==NULL)
-		issue="Couldn't open";
-}
-
-int rwfile::read(char *data,size_t count){
-	return fread(data,1,count,file);
-}
-int rwfile::write(char *data,size_t count){
-	return fwrite(data,1,count,file);
-}
-void rwfile::seek(qint64 loc){
-	fseek(file,loc,SEEK_SET);
-}
-rwops *rwfile::clone(){
-	return new rwfile(filename);
-}
-
-QString rwfile::readline(){
-	char data[0x400],*p;
-
-	if((p=fgets(data,sizeof(data),file))==NULL)
-		return NULL;
-
-	return QString::fromUtf8(data,strlen(data));
-}
-*/
 
 rwbound::rwbound(rwops *orig,qint64 sstart,qint64 ssize)
 		:file(orig->clone()), start(sstart), size(ssize), pos(sstart){
@@ -159,6 +151,10 @@ void rwbound::seek(qint64 loc){
 	pos=loc;
 	file->seek(loc);
 }
+qint64 rwbound::tell(){
+	return pos;
+}
+
 rwops *rwbound::clone(){
 	return new rwbound(file,start,size);
 }
@@ -189,6 +185,10 @@ void rwmemfile::seek(qint64 loc){
 	pos=loc;
 	if(pos>size) pos=size;
 }
+qint64 rwmemfile::tell(){
+	return pos;
+}
+
 rwops *rwmemfile::clone(){
 	return new rwmemfile(dd,size);
 }
@@ -200,19 +200,6 @@ rwmemfile::rwmemfile(void *data,qint64 insize){
 }
 rwmemfile::~rwmemfile(){
 	delete dd;
-}
-
-quint32 Yum::size(){
-	quint32 v[3];
-
-	rw->seek(entryloc);
-	rw->read((char *)v,sizeof(v));
-
-	quint32
-		size			= v[1],
-		uncompressed	= v[2];
-	
-	return uncompressed==0?size:uncompressed;
 }
 
 void Yum::spit(char *in,size_t insize){
@@ -317,6 +304,14 @@ Yum::Yum(rwops *orig,int no)
 
 	quint32 packs=*(quint32 *)(data+8);
 	entryloc=0x20+packs*0x10+no*0x0c;
+
+	quint32 v[3];
+
+	rw->seek(entryloc);
+	rw->read((char *)v,sizeof(v));
+
+	size			= v[1];
+	uncompressed	= v[2];
 }
 
 void Iso::readdirent(int location,const QString & path){

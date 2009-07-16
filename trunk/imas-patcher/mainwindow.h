@@ -47,6 +47,15 @@ struct ResourceData{
 	QVariant data;
 };
 
+struct JobWorkflowItem{
+	const char *type;
+	qint64 amount;
+
+	qint64 timeTaken;
+
+	JobWorkflowItem(const char *a,int b){type=a;amount=b;timeTaken=0;}
+};
+
 struct GenericJob{
 	QString desc;
 	QString issue;
@@ -60,6 +69,7 @@ struct GenericJob{
 	rwops *isofile;
 
 	virtual void process();
+
 	QStringList output;
 
 	QString type;
@@ -96,6 +106,12 @@ struct YumMailJob :public YumFileJob{
 
 struct YumPomJob :public YumFileJob{
 	int subnumber;
+
+	void process();
+};
+
+struct YumMifJob :public YumFileJob{
+	int target;
 
 	void process();
 };
