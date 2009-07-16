@@ -2,6 +2,7 @@
 
 MifFile::MifFile(rwops *rw){
 	QString line;
+	int count;
 
 	line=rw->readline();
 
@@ -10,7 +11,7 @@ MifFile::MifFile(rwops *rw){
 
 	ASSUME(first.exactMatch(line),"not a proper MIF file");
 
-	int count=first.cap(2).toInt();
+	count=first.cap(2).toInt();
 
 	for(int i=0;i<count;i++){
 		line=rw->readline();
