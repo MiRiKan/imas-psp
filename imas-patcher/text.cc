@@ -3,7 +3,7 @@
 #include "doubletile.c.inc"
 
 static QHash<unsigned short,unsigned short> codes_hash;
-static QHash<char,unsigned short> replacements_hash;
+static QHash<QChar,unsigned short> replacements_hash;
 
 static unsigned short ucs_to_sjis_table[]={
 #include "sjis-table.c.inc"
@@ -113,15 +113,15 @@ QByteArray text_encode(const QString & source,QString *issue){
 
 QByteArray text_encode_control(const QString & source,QString *issue){
 	QByteArray res;
-	QRegExp rx("(%\\d*[a-z]|&[a-z]|[^%&]+)");
+	QRegExp rx("(%\\d*[a-z]|&[a-z]|<\\d+>|[^%&<]+|.+)");
 	int pos=0;
 
 	while((pos=rx.indexIn(source,pos))!=-1){
 		QString issue1;
 		QChar ch=rx.cap(1).at(0);
 
-		if(ch=='&' || ch=='%')	res.append(rx.cap(1));
-		else					res.append(text_encode(rx.cap(1),&issue1));
+		if(ch=='&' || ch=='%' || ch=='<')	res.append(rx.cap(1));
+		else								res.append(text_encode(rx.cap(1),&issue1));
 
 		if(!issue1.isEmpty()){
 			if(issue) *issue=issue1;
@@ -129,6 +129,35 @@ QByteArray text_encode_control(const QString & source,QString *issue){
 		}
 
 		pos+=rx.matchedLength();
+	}
+
+	return res;
+}
+
+QByteArray text_encode_control_length(QString source,int length,QString *issue){
+	QByteArray res;
+	QStringList list=source.split(" ");
+
+	while(!list.isEmpty()){
+		QString s;
+		QByteArray bytes;
+
+		while(!list.isEmpty()){
+			s.append(list.at(0));
+
+			QByteArray bb=text_encode_control(s,issue);
+			if(issue && !issue->isEmpty()) return QByteArray();
+
+			if(bb.length()>length && !bytes.isEmpty()) break;
+			bytes=bb;
+			list.removeFirst();
+
+			s.append(" ");
+		}
+
+
+		res.append(bytes);
+		if(!list.isEmpty()) res.append('\n');
 	}
 
 	return res;

@@ -7,6 +7,7 @@
 
 QByteArray text_encode(const QString & source,QString *issue=NULL);
 QByteArray text_encode_control(const QString & source,QString *issue);
+QByteArray text_encode_control_length(QString source,int length,QString *issue);
 
 #define SCIPT_GROUP_NONE		0
 #define SCIPT_GROUP_TEXT		1

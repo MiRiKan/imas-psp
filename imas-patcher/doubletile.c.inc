@@ -1973,7 +1973,8 @@ static struct {const char *sym;unsigned short code;} codes[]={
 	{"-1",	34028},
 };
 
-static struct {char sym;unsigned short code;} replacements[]={
+static struct {QChar sym;unsigned short code;} replacements[]={
+	{0x2212,33117},
 	{'S',	33394},
 	{'/',	33118},
 	{'K',	33386},
