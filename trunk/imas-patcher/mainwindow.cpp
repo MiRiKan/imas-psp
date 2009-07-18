@@ -30,6 +30,14 @@ QString fileext(const QString & path){
 	return path.right(path.length()-path.lastIndexOf('.')-1);
 }
 
+QString chomp(QString s){
+	QChar c;
+	while(!s.isEmpty() && (c=s.at(s.length()-1),c=='\r' || c=='\n'))
+		s.chop(1);
+
+	return s;
+}
+
 int isanumberfile(const QString & name){
 	QByteArray arr=name.toUtf8();
 	char *p=arr.data(),*q=p;
@@ -268,44 +276,76 @@ void YumScriptJob::process(){try{
 	state=JOB_STATE_FAILED;
 }}
 
+static struct {unsigned short mail,index,count;} mails[]={
+#include "mails.c.inc"
+};
+
 void YumMailJob::process(){try{
+	int index;
 	state=JOB_STATE_OK;
 
+	for(index=0;index<elems(mails);index++){
+		if(mails[index].mail==number) break;
+	}
+
+	TASSUME(index!=elems(mails),QString("There is no mail file with number %1 in archive").arg(number));
+
+	int count=mails[index].count;
+	index=mails[index].index;
+
 	QByteArray bytes;
+	QList<int> records;
 
-	QRegExp leaveUntouched("^##");
-
+	QRegExp record("^##(.*)");
 	QString line;
 	while(!(line=file->readline()).isNull()){
 		QChar c;
-		while(!line.isEmpty() && (c=line.at(line.length()-1),c=='\r' || c=='\n'))
-			line.chop(1);
+		line=chomp(line);
 
-		if(leaveUntouched.indexIn(line)==-1){
-			QByteArray arr=line.toAscii();
-			bytes.append(arr);
-			bytes.append("\r\n",2);
-			continue;
-		}
-
-		QString errstr;
-		QByteArray arr=text_encode_control(line,&errstr);
-		if(!errstr.isEmpty()){
-			state=JOB_STATE_WARNINGS;
-			output+=QString("line %1: could not encode text: %2")
+		QByteArray arr;
+		if(record.indexIn(line)!=-1){
+			records.append(bytes.count());
+			arr=line.toAscii();
+		} else{
+			QString errstr;
+			arr=text_encode_control_length(line,26,&errstr);
+			if(!errstr.isEmpty()){
+				state=JOB_STATE_WARNINGS;
+				output+=QString("line %1: could not encode text: %2")
 					.arg(file->line())
 					.arg(errstr);
+			}
 		}
 
 		bytes.append(arr);
 		bytes.append("\r\n",2);
 	}
 
+	TASSUME(records.count()==count,QString("Not enough ## entries in file. Need %1 have %2").arg(records.count()).arg(count));
+
+	QString head=QString("//VERSION=1\n//RECORD_NUM=%1\n").arg(count);
+	QByteArray records_data=head.toAscii();
+
+	for(int i=0;i<count;i++){
+		QString s=QString("//RECORD_POS=%1\n").arg(records.at(i));
+		QByteArray a=s.toAscii();
+		records_data.append(a);
+	}
+
+//	rwfile rw("res.txt");
+//	rw.write(records_data.data(),records_data.count());
+
 	Yum y(isofile,number);
 	TASSUME(y.issue.isEmpty(),y.issue);
 
 	y.spit(bytes.data(),bytes.size());
 	TASSUME(y.issue.isEmpty(),y.issue);
+
+	Yum yy(isofile,index);
+	TASSUME(yy.issue.isEmpty(),QString("Mail index file (%1) - %2").arg(index).arg(yy.issue));
+
+	yy.spit(records_data.data(),records_data.size());
+	TASSUME(yy.issue.isEmpty(),QString("Mail index file (%1) - %2").arg(index).arg(yy.issue));
 
 } catch(QString ss){
 	state=JOB_STATE_FAILED;

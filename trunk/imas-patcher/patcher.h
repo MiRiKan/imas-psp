@@ -12,6 +12,8 @@
 
 #define CLEAR_LIST(l) do{while(l.count()) delete l.takeFirst();}while(0)
 
+#define elems(l) ((int)(sizeof(l)/sizeof((l)[0])))
+
 char *unpad(char *s,char c);
 
 struct IsoEntry{
