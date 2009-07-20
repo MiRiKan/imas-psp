@@ -22,16 +22,7 @@ struct IsoEntry{
 
 	IsoEntry(quint32 b,quint32 s){block=b;size=s;}
 };
-/*
-Commented out due to unused state and issues caused
-by this specific GCC extension with other compilers
-such as MSVC and ICL
-struct IsoDirent {
-	int  a;
-	char b;
-	int  c;
-} __attribute__((__packed__)); <- This was our GCC specific extension!
-*/
+
 class rwops{
 public:
 	virtual int read(void *data,size_t count);

@@ -451,6 +451,8 @@ void YumMifJob::process(){try{
 	y.spit(bytes.data(),bytes.count());
 	TASSUME(y.issue.isEmpty(),y.issue);
 
+//	rwfile rw("res.txt");
+//	rw.write(bytes.data(),bytes.count());
 
 	state=JOB_STATE_OK;
 //	if(res.remapped!=0)
@@ -602,7 +604,7 @@ void MainWindow::on_doItButton_clicked(){
 	GenericJob *job;
 
 	QRegExp mifFile("(\\d+)\\.mif\\.png$");
-	QRegExp imageFile("(\\d+)(-(\\d+)|)\\.(png|gif|jpe?g|bmp)$");
+	QRegExp imageFile("(\\d+)(-(\\d+)|)(-[a-z]+)?\\.(png|gif|jpe?g|bmp)$");
 	QRegExp emailFile("(\\d+)\\.mail\\.txt$");
 
 	for(int i=0;i<len;i++){
