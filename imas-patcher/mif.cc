@@ -137,7 +137,7 @@ MifConversionResult MifFile::read(QImage picture){
 		if(alias && alias!=node && alias->x!=0x7fffffff){
 			node->x=alias->x; node->y=alias->y;
 			res.remapped++;
-		} else if(new_node->w!=0){
+		} else if(new_node->w>0){
 			node->x=new_node->x; node->y=new_node->y;
 			node->w=new_node->w-new_node->x+1;
 			node->h=new_node->h-new_node->y+1;
